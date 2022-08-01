@@ -23,7 +23,7 @@ impl TryFrom<&Path> for FileInfo {
         let cap = RE
             .captures(&path_str)
             .ok_or_else(|| DecodeError::file_info("failed to decode file info"))?;
-        let file_type = FileType::try_from(&cap[1])?;
+        let file_type = FileType::from_str(&cap[1])?;
         let file_timestamp = datetime_from_epoch_millis(
             u64::from_str(&cap[2])
                 .map_err(|_| DecodeError::file_info("faild to decode timestamp"))?,
@@ -55,7 +55,7 @@ impl fmt::Display for FileType {
 }
 
 impl FileType {
-    pub fn file_prefix(&self) -> &'static str {
+    pub fn to_str(&self) -> &'static str {
         match self {
             Self::CellHeartbeat => CELL_HEARTBEAT,
             Self::CellSpeedtest => CELL_SPEEDTEST,
@@ -63,10 +63,10 @@ impl FileType {
     }
 }
 
-impl TryFrom<&str> for FileType {
-    type Error = Error;
-    fn try_from(value: &str) -> Result<Self> {
-        let result = match value {
+impl FromStr for FileType {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self> {
+        let result = match s {
             CELL_HEARTBEAT => Self::CellHeartbeat,
             CELL_SPEEDTEST => Self::CellSpeedtest,
             _ => return Err(Error::from(io::Error::from(io::ErrorKind::InvalidInput))),

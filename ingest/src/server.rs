@@ -1,4 +1,4 @@
-use crate::{env_var, Error, EventId, Result, DEFAULT_STORE_ROLLOVER_SECS};
+use crate::{env_var, Error, EventId, PublicKey, Result, DEFAULT_STORE_ROLLOVER_SECS};
 use axum::{
     http::StatusCode,
     routing::{get, post},
@@ -8,7 +8,7 @@ use futures_util::TryFutureExt;
 use helium_proto::services::poc_mobile::{
     self, CellHeartbeatReqV1, CellHeartbeatRespV1, SpeedtestReqV1, SpeedtestRespV1,
 };
-use poc_store::{heartbeat::CellHeartbeat, speedtest::CellSpeedtest};
+use poc_store::{heartbeat::CellHeartbeat, speedtest::CellSpeedtest, MsgVerify};
 use poc_store::{FileSink, FileSinkBuilder, FileType};
 use serde_json::{json, Value};
 use std::{net::SocketAddr, path::Path, str::FromStr, sync::Arc, time::Duration};
@@ -125,8 +125,12 @@ impl poc_mobile::PocMobile for GrpcServer {
         &self,
         request: Request<SpeedtestReqV1>,
     ) -> GrpcResult<SpeedtestRespV1> {
-        // TODO: Signature verify speedtest_req
         let event = request.into_inner();
+        let public_key = PublicKey::try_from(event.pub_key.as_ref())
+            .map_err(|_| Status::invalid_argument("invalid public key"))?;
+        event
+            .verify(&public_key)
+            .map_err(|_| Status::invalid_argument("invalid signature"))?;
         // Encode event digest, encode and return as the id
         let event_id = EventId::from(&event);
         {
@@ -143,8 +147,12 @@ impl poc_mobile::PocMobile for GrpcServer {
         &self,
         request: Request<CellHeartbeatReqV1>,
     ) -> GrpcResult<CellHeartbeatRespV1> {
-        // TODO: Signature verify heartbeat_req
         let event = request.into_inner();
+        let public_key = PublicKey::try_from(event.pub_key.as_ref())
+            .map_err(|_| Status::invalid_argument("invalid public key"))?;
+        event
+            .verify(&public_key)
+            .map_err(|_| Status::invalid_argument("invalid signature"))?;
         let event_id = EventId::from(&event);
         {
             let mut sink = self.sinks.heartbeat_sink.lock().await;
