@@ -3,7 +3,7 @@ use futures_util::TryFutureExt;
 use helium_proto::services::poc_mobile::{
     self, CellHeartbeatReqV1, CellHeartbeatRespV1, SpeedtestReqV1, SpeedtestRespV1,
 };
-use poc_store::MsgVerify;
+use poc_store::{MsgVerify, heartbeat};
 use poc_store::{file_sink, file_upload, FileType};
 use std::{net::SocketAddr, path::Path, str::FromStr};
 use tokio::task::JoinHandle;
@@ -123,13 +123,29 @@ pub async fn grpc_server(shutdown: triggered::Listener) -> Result {
             ))
             .serve_with_shutdown(grpc_addr, server_shutdown)
             .await
+            .map_err(Error::from)
+    });
+
+    let heartbeat_sink = tokio::spawn(async move {
+        heartbeat_sink.run().await
+            .map_err(Error::from)
+    });
+
+    let speedtest_sink = tokio::spawn(async move {
+        speedtest_sink.run().await.map_err(Error::from)
+    });
+
+    let file_upload_shutdown = shutdown.clone();
+
+    let file_upload = tokio::spawn(async move {
+        file_upload.run(file_upload_shutdown).await.map_err(Error::from)
     });
 
     tokio::try_join!(
-        flatten(server).map_err(Error::from),
-        heartbeat_sink.run().map_err(Error::from),
-        speedtest_sink.run().map_err(Error::from),
-        file_upload.run(shutdown.clone()).map_err(Error::from)
+        flatten(server),
+        flatten(heartbeat_sink),
+        flatten(speedtest_sink),
+        flatten(file_upload),
     )
     .map(|_| ())
 }
