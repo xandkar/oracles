@@ -6,6 +6,7 @@ use helium_proto::services::poc_mobile::{
 use poc_store::MsgVerify;
 use poc_store::{file_sink, file_upload, FileType};
 use std::{net::SocketAddr, path::Path, str::FromStr};
+use tokio::task::JoinHandle;
 use tonic::{metadata::MetadataValue, transport, Request, Response, Status};
 
 pub type GrpcResult<T> = std::result::Result<Response<T>, Status>;
@@ -56,6 +57,14 @@ impl poc_mobile::PocMobile for GrpcServer {
     }
 }
 
+async fn flatten<T, E>(handle: JoinHandle<std::result::Result<T, E>>) -> std::result::Result<T, E> {
+    match handle.await {
+        Ok(Ok(result)) => Ok(result),
+        Ok(Err(err)) => Err(err),
+        Err(err) => panic!("Error joining: {}", err),
+    }
+}
+
 pub async fn grpc_server(shutdown: triggered::Listener) -> Result {
     let grpc_addr: SocketAddr = env_var("GRPC_SOCKET_ADDR")?
         .map_or_else(
@@ -101,19 +110,23 @@ pub async fn grpc_server(shutdown: triggered::Listener) -> Result {
 
     tracing::info!("grpc listening on {}", grpc_addr);
 
-    let server = transport::Server::builder()
-        .add_service(poc_mobile::Server::with_interceptor(
-            poc_mobile,
-            move |req: Request<()>| match req.metadata().get("authorization") {
-                Some(t) if api_token == t => Ok(req),
-                _ => Err(Status::unauthenticated("No valid auth token")),
-            },
-        ))
-        .serve_with_shutdown(grpc_addr, shutdown.clone())
-        .map_err(Error::from);
+    let server_shutdown = shutdown.clone();
+
+    let server = tokio::spawn(async move {
+        transport::Server::builder()
+            .add_service(poc_mobile::Server::with_interceptor(
+                poc_mobile,
+                move |req: Request<()>| match req.metadata().get("authorization") {
+                    Some(t) if api_token == t => Ok(req),
+                    _ => Err(Status::unauthenticated("No valid auth token")),
+                },
+            ))
+            .serve_with_shutdown(grpc_addr, server_shutdown)
+            .await
+    });
 
     tokio::try_join!(
-        server,
+        flatten(server).map_err(Error::from),
         heartbeat_sink.run().map_err(Error::from),
         speedtest_sink.run().map_err(Error::from),
         file_upload.run(shutdown.clone()).map_err(Error::from)
