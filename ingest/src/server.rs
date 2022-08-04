@@ -111,12 +111,11 @@ pub async fn grpc_server(shutdown: triggered::Listener) -> Result {
         ))
         .serve_with_shutdown(grpc_addr, shutdown.clone())
         .map_err(Error::from);
-    tokio::pin!(server);
 
     tokio::try_join!(
         server,
-        heartbeat_sink.run(shutdown.clone()).map_err(Error::from),
-        speedtest_sink.run(shutdown.clone()).map_err(Error::from),
+        heartbeat_sink.run().map_err(Error::from),
+        speedtest_sink.run().map_err(Error::from),
         file_upload.run(shutdown.clone()).map_err(Error::from)
     )
     .map(|_| ())

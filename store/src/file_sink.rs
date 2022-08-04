@@ -156,7 +156,7 @@ impl FileSink {
         Ok(())
     }
 
-    pub async fn run(&mut self, shutdown: triggered::Listener) -> Result {
+    pub async fn run(&mut self) -> Result {
         tracing::info!(
             "starting file sink {} in {}",
             self.prefix,
@@ -168,11 +168,7 @@ impl FileSink {
         rollover_timer.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
 
         loop {
-            if shutdown.is_triggered() {
-                return Ok(());
-            }
             tokio::select! {
-                _ = shutdown.clone() => (),
                 _ = rollover_timer.tick() => self.maybe_roll().await?,
                 msg = self.messages.recv() => match msg {
                     Some(buf) => match self.write(Bytes::from(buf)).await {
@@ -181,6 +177,7 @@ impl FileSink {
                     },
                     None => {
                         tracing::warn!("file sink message channel closed");
+                        self.shutdown().await;
                         return Ok(())
                     }
                 }
