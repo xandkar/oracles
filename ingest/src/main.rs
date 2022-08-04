@@ -33,7 +33,10 @@ async fn main() -> Result {
     // grpc server
     let grpc_server = server::grpc_server(shutdown_listener.clone());
 
-    grpc_server.await?;
+    tokio::select! {
+        _ = shutdown_listener.clone() => (),
+        _ = grpc_server => (),
+    }
 
     Ok(())
 }
