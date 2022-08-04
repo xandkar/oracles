@@ -13,6 +13,9 @@ serde_json = "1"
 thiserror = "1"
 tokio = { version = "1", default-features=false, features=["fs"] }
 tokio-util = "0"
+tokio-stream = "0"
+tracing = "0"
+triggered = "0"
 async-compression = {version = "0", features = ["tokio", "gzip"]}
 futures = "*"
 futures-core = "*"

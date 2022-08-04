@@ -15,14 +15,11 @@ clap = {version = "3", features = ["derive"]}
 tokio = { version = "1", default-features=false, features=["fs", "macros", "signal", "rt-multi-thread"] }
 tracing = "0"
 tracing-subscriber = { version = "0", features = ["env-filter"] }
-axum = "0"
-hyper = "*"
 base64 = "0"
 sha2 = "*"
 http = "*"
 tonic = "0"
 chrono = {version = "0", features = ["serde"]}
-tower-http = {version = "*", features = ["auth", "trace"]}
 triggered = "0"
 futures = "*"
 futures-util = "*"

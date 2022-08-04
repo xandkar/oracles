@@ -1,9 +1,11 @@
-use crate::{env_var, error::DecodeError, Result};
+use crate::{env_var, error::DecodeError, Error, Result};
 use aws_config::meta::region::RegionProviderChain;
-use aws_sdk_s3::{Client, Endpoint, Error as SdkError, Region};
+use aws_sdk_s3::{types::ByteStream, Client, Endpoint, Error as SdkError, Region};
 use http::Uri;
+use std::path::Path;
 use std::str::FromStr;
 
+#[derive(Debug, Clone)]
 pub struct FileStore {
     client: Client,
 }
@@ -38,7 +40,6 @@ impl FileStore {
             .client
             .list_objects_v2()
             .bucket(bucket)
-            .delimiter("/")
             .send()
             .await
             .map_err(SdkError::from)?;
@@ -50,5 +51,31 @@ impl FileStore {
             .map(|obj| obj.key().unwrap_or_default().to_string())
             .collect();
         Ok(result)
+    }
+
+    pub async fn put(&self, bucket: &str, file: &Path) -> Result {
+        let byte_stream = ByteStream::from_path(&file)
+            .await
+            .map_err(|_| Error::not_found(format!("could not open {}", file.display())))?;
+        self.client
+            .put_object()
+            .bucket(bucket)
+            .key(file.file_name().map(|name| name.to_string_lossy()).unwrap())
+            .body(byte_stream)
+            .send()
+            .await
+            .map_err(SdkError::from)?;
+        Ok(())
+    }
+
+    pub async fn remove(&self, bucket: &str, key: &str) -> Result {
+        self.client
+            .delete_object()
+            .bucket(bucket)
+            .key(key)
+            .send()
+            .await
+            .map_err(SdkError::from)?;
+        Ok(())
     }
 }

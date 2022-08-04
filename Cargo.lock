@@ -441,8 +441,6 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "serde",
- "serde_json",
- "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tower",
@@ -1665,7 +1663,10 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tokio",
+ "tokio-stream",
  "tokio-util",
+ "tracing",
+ "triggered",
 ]
 
 [[package]]
@@ -1673,7 +1674,6 @@ name = "poc5g-ingest"
 version = "0.1.0"
 dependencies = [
  "async-compression",
- "axum",
  "base64",
  "chrono",
  "clap",
@@ -1683,7 +1683,6 @@ dependencies = [
  "helium-crypto",
  "helium-proto",
  "http",
- "hyper",
  "poc-store",
  "prost",
  "serde",
@@ -1692,7 +1691,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tonic",
- "tower-http",
  "tracing",
  "tracing-subscriber",
  "triggered",
@@ -2147,18 +2145,6 @@ version = "1.0.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "82c2c1fdcd807d1098552c5b9a36e425e42e9fbd7c6a37a8425f390f781f7fa7"
 dependencies = [
- "itoa 1.0.2",
- "ryu",
- "serde",
-]
-
-[[package]]
-name = "serde_urlencoded"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3491c14715ca2294c4d6a88f15e84739788c1d030eed8c110436aafdaa2f3fd"
-dependencies = [
- "form_urlencoded",
  "itoa 1.0.2",
  "ryu",
  "serde",
@@ -2666,7 +2652,6 @@ version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c530c8675c1dbf98facee631536fa116b5fb6382d7dd6dc1b118d970eafe3ba"
 dependencies = [
- "base64",
  "bitflags",
  "bytes",
  "futures-core",
@@ -2678,7 +2663,6 @@ dependencies = [
  "tower",
  "tower-layer",
  "tower-service",
- "tracing",
 ]
 
 [[package]]

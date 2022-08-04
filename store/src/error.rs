@@ -20,6 +20,8 @@ pub enum Error {
     Aws(#[from] aws_sdk_s3::Error),
     #[error("env error")]
     Env(#[from] std::env::VarError),
+    #[error("mpsc channel error")]
+    Channel,
 }
 
 #[derive(Error, Debug)]
@@ -60,6 +62,10 @@ from_err!(DecodeError, prost::DecodeError);
 impl Error {
     pub fn not_found<E: ToString>(msg: E) -> Self {
         Self::NotFound(msg.to_string())
+    }
+
+    pub fn channel() -> Error {
+        Error::Channel
     }
 }
 

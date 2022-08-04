@@ -2,10 +2,12 @@ use crate::{datetime_from_epoch_millis, error::DecodeError, Error, Result};
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
 use regex::Regex;
+use serde::Serialize;
 use std::{fmt, io, path::Path, str::FromStr};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FileInfo {
+    pub file_name: String,
     pub file_type: FileType,
     pub file_timestamp: DateTime<Utc>,
 }
@@ -16,12 +18,12 @@ impl TryFrom<&Path> for FileInfo {
         lazy_static! {
             static ref RE: Regex = Regex::new(r"([a-z,_]+).(\d+)(.gz)?").unwrap();
         }
-        let path_str = value
+        let file_name = value
             .file_name()
             .map(|str| str.to_string_lossy().into_owned())
             .ok_or_else(|| Error::not_found("missing filename"))?;
         let cap = RE
-            .captures(&path_str)
+            .captures(&file_name)
             .ok_or_else(|| DecodeError::file_info("failed to decode file info"))?;
         let file_type = FileType::from_str(&cap[1])?;
         let file_timestamp = datetime_from_epoch_millis(
@@ -29,16 +31,25 @@ impl TryFrom<&Path> for FileInfo {
                 .map_err(|_| DecodeError::file_info("faild to decode timestamp"))?,
         );
         Ok(Self {
+            file_name,
             file_type,
             file_timestamp,
         })
     }
 }
 
+impl FromStr for FileInfo {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self> {
+        Self::try_from(Path::new(s))
+    }
+}
+
 pub const CELL_HEARTBEAT: &str = "cell_heartbeat";
 pub const CELL_SPEEDTEST: &str = "cell_speedtest";
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum FileType {
     CellHeartbeat,
     CellSpeedtest,

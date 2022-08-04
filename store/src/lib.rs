@@ -1,9 +1,10 @@
 pub mod cli;
 mod error;
 mod file_info;
-mod file_sink;
-mod file_source;
-mod file_store;
+pub mod file_sink;
+pub mod file_source;
+pub mod file_store;
+pub mod file_upload;
 pub mod heartbeat;
 mod msg_verify;
 pub mod public_key;
