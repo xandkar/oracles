@@ -127,6 +127,7 @@ pub async fn grpc_server(shutdown: triggered::Listener) -> Result {
     });
 
     let heartbeat_sink = tokio::spawn(async move {
+        println!("got here");
         heartbeat_sink.run().await
             .map_err(Error::from)
     });
@@ -142,10 +143,10 @@ pub async fn grpc_server(shutdown: triggered::Listener) -> Result {
     });
 
     tokio::try_join!(
-        flatten(server),
         flatten(heartbeat_sink),
         flatten(speedtest_sink),
         flatten(file_upload),
+        flatten(server),
     )
     .map(|_| ())
 }
