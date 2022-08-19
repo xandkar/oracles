@@ -1,121 +1,61 @@
-use crate::{Error, FileInfo, FileStore, Result};
+use crate::{BytesMutStream, Error};
 use async_compression::tokio::bufread::GzipDecoder;
-use bytes::BytesMut;
 use futures::{
-    stream::{self, BoxStream},
+    stream::{self},
     StreamExt, TryFutureExt, TryStreamExt,
 };
-use std::{
-    boxed::Box,
-    marker::Send,
-    path::{Path, PathBuf},
-};
-use tokio::{fs::File, io::AsyncRead, io::BufReader};
+use std::path::{Path, PathBuf};
+use tokio::{fs::File, io::BufReader};
 use tokio_util::codec::{length_delimited::LengthDelimitedCodec, FramedRead};
 
-pub type Stream<T> = BoxStream<'static, Result<T>>;
-pub type ByteStream = Stream<BytesMut>;
-
-const STREAM_BUFFER_SIZE: usize = 100_000;
-
-fn stream_source<S>(stream: S) -> ByteStream
-where
-    S: AsyncRead + Send + 'static,
-{
-    let buf_reader = BufReader::with_capacity(STREAM_BUFFER_SIZE, stream);
-    Box::pin(
-        FramedRead::new(GzipDecoder::new(buf_reader), LengthDelimitedCodec::new())
-            .map_err(Error::from),
-    )
-}
-
-/// Stream a series of items from a given remote store and bucket. This will
-/// automatically open the next file when the current one is exhausted.
-pub fn store_source<I, B>(store: FileStore, bucket: B, infos: I) -> ByteStream
-where
-    I: IntoIterator<Item = FileInfo>,
-    B: Into<String>,
-    <I as IntoIterator>::IntoIter: DoubleEndedIterator + Send + 'static,
-{
-    let infos = infos.into_iter().rev();
-    stream::try_unfold(
-        (bucket.into(), infos, store, None),
-        move |(bucket, mut infos, store, current): (
-            String,
-            _,
-            FileStore,
-            Option<ByteStream>,
-        )| async move {
-            if let Some(mut stream) = current {
-                match stream.next().await {
-                    Some(Ok(item)) => {
-                        return Ok(Some((
-                            item,
-                            (bucket, infos, store, Some(stream)),
-                        )))
-                    }
-                    Some(Err(err)) => return Err(err),
-                    None => (),
-                }
-            };
-            // No current exhausted or none. get next key and make a new stream
-            while let Some(info) = infos.next() {
-                tracing::info!("streaming {bucket}: {}", &info.key);
-                let mut stream = stream_source(store.get(bucket.clone(), info.key.clone()).await?);
-                match stream.next().await {
-                    Some(Ok(item)) => {
-                        return Ok(Some((
-                            item,
-                            (bucket, infos, store, Some(stream)),
-                        )))
-                    }
-                    Some(Err(err)) => return Err(err),
-                    None => (),
-                }
-            }
-            Ok(None)
-        },
-    )
-    .boxed()
-}
-
-pub fn file_source<I, P>(paths: I) -> ByteStream
+pub fn source<I, P>(paths: I) -> BytesMutStream
 where
     I: IntoIterator<Item = P>,
-    <I as IntoIterator>::IntoIter: DoubleEndedIterator + Send,
     P: AsRef<Path>,
 {
-    let paths = paths
+    let paths: Vec<PathBuf> = paths
         .into_iter()
-        .rev()
-        .map(|p| p.as_ref().to_path_buf())
+        .map(|path| path.as_ref().to_path_buf())
         .collect();
-    stream::try_unfold(
-        (paths, None),
-        |(mut paths, current): (Vec<PathBuf>, Option<ByteStream>)| async move {
-            if let Some(mut stream) = current {
-                match stream.next().await {
-                    Some(Ok(item)) => return Ok(Some((item, (paths, Some(stream))))),
-                    Some(Err(err)) => return Err(err),
-                    None => (),
-                }
-            };
-            // No current exhausted or none. Pop paths and make a new file_source
-            while let Some(path) = paths.pop() {
-                let mut stream = File::open(&path)
-                    .map_ok(stream_source)
+    stream::iter(paths)
+        .map(|path| File::open(path).map_err(Error::from))
+        .buffered(2)
+        .flat_map(|file| match file {
+            Ok(file) => {
+                let buf_reader = BufReader::new(file);
+                FramedRead::new(GzipDecoder::new(buf_reader), LengthDelimitedCodec::new())
                     .map_err(Error::from)
-                    .await?;
-                match stream.next().await {
-                    Some(Ok(item)) => return Ok(Some((item, (paths, Some(stream))))),
-                    Some(Err(err)) => return Err(err),
-                    None => (),
-                }
+                    .boxed()
             }
-            Ok(None)
-        },
-    )
-    .boxed()
+            Err(err) => stream::once(async { Err(err) }).boxed(),
+        })
+        .boxed()
+    // stream::try_unfold(
+    //     (paths, None),
+    //     |(mut paths, current): (Vec<PathBuf>, Option<ByteStream>)| async move {
+    //         if let Some(mut stream) = current {
+    //             match stream.next().await {
+    //                 Some(Ok(item)) => return Ok(Some((item, (paths, Some(stream))))),
+    //                 Some(Err(err)) => return Err(err),
+    //                 None => (),
+    //             }
+    //         };
+    //         // No current exhausted or none. Pop paths and make a new file_source
+    //         while let Some(path) = paths.pop() {
+    //             let mut stream = File::open(&path)
+    //                 .map_ok(stream_source)
+    //                 .map_err(Error::from)
+    //                 .await?;
+    //             match stream.next().await {
+    //                 Some(Ok(item)) => return Ok(Some((item, (paths, Some(stream))))),
+    //                 Some(Err(err)) => return Err(err),
+    //                 None => (),
+    //             }
+    //         }
+    //         Ok(None)
+    //     },
+    // )
+    // .boxed()
 }
 
 #[cfg(test)]

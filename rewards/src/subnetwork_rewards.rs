@@ -8,15 +8,12 @@ use crate::{
     CellType, Error, Keypair, Mobile, PublicKey, Result,
 };
 use chrono::{DateTime, Duration, Utc};
-use futures::stream::StreamExt;
+use futures::stream::{self, StreamExt};
 use helium_proto::{
     services::poc_mobile::CellHeartbeatReqV1, BlockchainTokenTypeV1 as ProtoTokenType,
     BlockchainTxnSubnetworkRewardsV1, Message, SubnetworkReward as ProtoSubnetworkReward,
 };
-use poc_store::{
-    file_source::{store_source, ByteStream},
-    FileStore, FileType,
-};
+use poc_store::{BytesMutStream, FileStore, FileType};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::{cmp::min, collections::HashMap};
@@ -102,15 +99,10 @@ async fn get_rewards(
     }
 
     let file_list = store
-        .list(
-            "poc5g-ingest",
-            FileType::CellHeartbeat,
-            after_utc,
-            before_utc,
-        )
+        .list_all(FileType::CellHeartbeat, after_utc, before_utc)
         .await?;
     metrics::histogram!("reward_server_processed_files", file_list.len() as f64);
-    let mut stream = store_source(store, "poc5g-ingest", file_list);
+    let mut stream = store.source(stream::iter(file_list).map(Ok).boxed());
     let counter = count_heartbeats(&mut stream).await?;
     let model = generate_model(&counter);
     let emitted = get_emissions_per_model(&model, after_utc, before_utc - after_utc);
@@ -118,7 +110,7 @@ async fn get_rewards(
     Ok(rewards)
 }
 
-async fn count_heartbeats(stream: &mut ByteStream) -> Result<Counter> {
+async fn count_heartbeats(stream: &mut BytesMutStream) -> Result<Counter> {
     // count heartbeats for this input stream
     let mut counter: Counter = HashMap::new();
     while let Some(Ok(msg)) = stream.next().await {
