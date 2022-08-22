@@ -1,7 +1,6 @@
 use crate::{
     datetime_from_epoch,
     emissions::{get_emissions_per_model, Emission, Model},
-    env_var,
     follower::FollowerService,
     subnetwork_reward::sorted_rewards,
     token_type::BlockchainTokenTypeV1,
@@ -9,15 +8,12 @@ use crate::{
     CellType, Error, Keypair, Mobile, PublicKey, Result,
 };
 use chrono::{DateTime, Duration, Utc};
-use futures::stream::StreamExt;
+use futures::stream::{self, StreamExt};
 use helium_proto::{
     services::poc_mobile::CellHeartbeatReqV1, BlockchainTokenTypeV1 as ProtoTokenType,
     BlockchainTxnSubnetworkRewardsV1, Message, SubnetworkReward as ProtoSubnetworkReward,
 };
-use poc_store::{
-    file_source::{store_source, ByteStream},
-    FileStore, FileType,
-};
+use poc_store::{BytesMutStream, FileStore, FileType};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::Serialize;
@@ -179,17 +175,11 @@ async fn get_rewards(
         return Err(Error::NotFound("cannot reward future".to_string()));
     }
 
-    let ingest_bucket = env_var("INGEST_BUCKET", "mainnet-poc5g-ingest".to_string())?;
-
     let file_list = store
-        .list(
-            &ingest_bucket,
-            FileType::CellHeartbeat,
-            after_utc,
-            before_utc,
-        )
+        .list_all(FileType::CellHeartbeat, after_utc, before_utc)
         .await?;
-    let mut stream = store_source(store, ingest_bucket, file_list);
+    metrics::histogram!("reward_server_processed_files", file_list.len() as f64);
+    let mut stream = store.source(stream::iter(file_list).map(Ok).boxed());
     let counter = count_heartbeats(&mut stream).await?;
     let model = generate_model(&counter);
     if let Some(emitted) = get_emissions_per_model(&model, after_utc, before_utc - after_utc) {
@@ -201,7 +191,7 @@ async fn get_rewards(
     Ok(None)
 }
 
-async fn count_heartbeats(stream: &mut ByteStream) -> Result<Counter> {
+async fn count_heartbeats(stream: &mut BytesMutStream) -> Result<Counter> {
     // count heartbeats for this input stream
     let counter = Arc::new(Mutex::new(Counter::new()));
 

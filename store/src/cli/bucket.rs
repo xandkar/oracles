@@ -59,10 +59,9 @@ struct FileFilter {
 }
 
 impl FileFilter {
-    async fn list(&self, store: &FileStore, bucket: &str) -> Result<Vec<FileInfo>> {
+    async fn list(&self, store: &FileStore) -> Result<Vec<FileInfo>> {
         store
-            .list(
-                bucket,
+            .list_all(
                 self.file_type,
                 self.after.map(datetime_from_naive),
                 self.before.map(datetime_from_naive),
@@ -74,7 +73,6 @@ impl FileFilter {
 /// List keys in a given bucket
 #[derive(Debug, clap::Args)]
 pub struct List {
-    bucket: String,
     #[clap(flatten)]
     filter: FileFilter,
 }
@@ -82,7 +80,7 @@ pub struct List {
 impl List {
     pub async fn run(&self) -> Result {
         let store = FileStore::from_env().await?;
-        let file_infos = self.filter.list(&store, &self.bucket).await?;
+        let file_infos = self.filter.list(&store).await?;
         print_json(&file_infos)
     }
 }
@@ -90,8 +88,6 @@ impl List {
 /// Put one or more files in a given bucket
 #[derive(Debug, clap::Args)]
 pub struct Put {
-    /// The bucket to put files into
-    bucket: String,
     /// The files to upload to the bucket
     files: Vec<PathBuf>,
 }
@@ -100,7 +96,7 @@ impl Put {
     pub async fn run(&self) -> Result {
         let file_store = FileStore::from_env().await?;
         for file in self.files.iter() {
-            file_store.put(&self.bucket, file).await?;
+            file_store.put(file).await?;
         }
         Ok(())
     }
@@ -119,7 +115,7 @@ impl Remove {
     pub async fn run(&self) -> Result {
         let file_store = FileStore::from_env().await?;
         for key in self.keys.iter() {
-            file_store.remove(&self.bucket, key).await?;
+            file_store.remove(key).await?;
         }
         Ok(())
     }
@@ -128,8 +124,6 @@ impl Remove {
 /// Get one or more files from a given bucket to a given folder
 #[derive(Debug, clap::Args)]
 pub struct Get {
-    /// The bucket to fetch files from
-    bucket: String,
     /// The target folder to download files to
     dest: PathBuf,
     #[clap(flatten)]
@@ -139,7 +133,7 @@ pub struct Get {
 impl Get {
     pub async fn run(&self) -> Result {
         let store = FileStore::from_env().await?;
-        let file_infos = self.filter.list(&store, &self.bucket).await?;
+        let file_infos = self.filter.list(&store).await?;
         let results = Arc::new(Mutex::new(Vec::with_capacity(file_infos.len())));
         stream::iter(&file_infos)
             .map(|info| (store.clone(), info, results.clone()))
@@ -150,13 +144,12 @@ impl Get {
                     .open(&self.dest.join(Path::new(&info.key)))
                     .map_err(Error::from)
                     .and_then(|mut file| {
-                        store
-                            .get(&self.bucket, &info.key)
-                            .and_then(|mut stream| async move {
-                                tokio::io::copy(&mut stream, &mut file)
-                                    .map_err(Error::from)
-                                    .await
-                            })
+                        store.get(&info.key).and_then(|stream| async move {
+                            let mut reader = tokio_util::io::StreamReader::new(stream);
+                            tokio::io::copy(&mut reader, &mut file)
+                                .map_err(Error::from)
+                                .await
+                        })
                     })
                     .await;
                 {
