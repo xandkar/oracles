@@ -40,6 +40,7 @@
 # """
 
 import base64
+import base58
 from binascii import crc32
 import pickle
 from decimal import Decimal
@@ -128,14 +129,38 @@ def build_gateways_from_env(gateways):
 
     return gateways
 
+def b58_to_bin(b58_bytes):
+    print("b58_to_bin(): input bytes: ")
+    print(b58_bytes)
+
+    # Compliments of jerm:
+    # 1. Take b58 string, decode to byte vector
+    # 2. Assert byte[0] == 0 (version 0)
+    # 3. Take bytes[1:-4] as the blockchain binary key
+    # 4. Take bytes[-4:end] as the checksum.
+    # 5. Verify sha256(blockchain binary key)[0:4]  == checksum
+    # 6. Return blockchain binary key for use on blockchain.
+
+    # TODO: this version check isn't working, why?
+    #if b58_bytes[0] != b'\x00':
+    #    print("b58_to_bin(): invalid pubkey version: " + str(b58_bytes[0]))
+    #    return False
+
+    bin_key = b58_bytes[1:-4]
+    checksum = b58_bytes[-4:]
+    # TODO: verify checksum
+    return bin_key
+
 def main(gateways):
+    print(gateways)
     for gw in gateways:
+        print(bytes(gw['gw_addr'], 'utf-8'))
         curr_dt = datetime.now(),
         heartbeat = heartbeat_pb2.cell_heartbeat_req_v1(
-            pub_key=str.encode(gw['gw_addr']),
+            pub_key=b58_to_bin(base58.b58decode(bytes(gw['gw_addr'], 'ascii'))),
             hotspot_type='enodeb',
             cell_id=choice(gw['cell_ids']),
-            timestamp=1000000,
+            timestamp=int(datetime.timestamp(datetime.utcnow())),
             lon=float(gw['lon']),
             lat=float(gw['lat']),
             operation_mode=choose_mode(),
@@ -145,9 +170,9 @@ def main(gateways):
         #log.debug("{}".format(pformat(heartbeat)))
         
         url = os.environ["HEARTBEAT_GRPC_URL"]
-        api_token = grpc.access_token_call_credentials("API_TOKEN")
+        api_token = "Bearer " + os.environ["API_TOKEN"]
                                         
-        credentials = grpc.ssl_channel_credentials()
+        #credentials = grpc.ssl_channel_credentials()
         metadata = [('authorization', api_token)]
         with grpc.insecure_channel(target=url,
                                  options=[('grpc.lb_policy_name', 'pick_first'),
@@ -157,7 +182,8 @@ def main(gateways):
             stub = heartbeat_pb2_grpc.poc_mobileStub(channel)
             response = stub.submit_cell_heartbeat(heartbeat,metadata=metadata)
 
-            print("submit heartbeat req received response: " + response.message)        
+            print("submit heartbeat req received response: ")
+            print(response)
 
 
 if __name__ == "__main__":
