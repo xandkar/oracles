@@ -270,14 +270,12 @@ impl Server {
                 tracing::info!("found last_reward_end_time: {:#?}", last_reward_end_time);
 
                 let store = FileStore::from_env().await?;
-                tracing::info!("store {:?}", store);
                 let rewards = SubnetworkRewards::from_last_reward_end_time(
                     store,
                     self.follower_service.clone(),
                     last_reward_end_time,
                 )
                 .await?;
-                tracing::info!("rewards {:#?}", rewards);
 
                 match Meta::last_reward_height(&self.pool).await? {
                     None => {
