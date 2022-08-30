@@ -251,7 +251,10 @@ impl Server {
     }
 
     async fn handle_rewards(&mut self, block_height: u64, block_timestamp: u64) -> Result {
-        tracing::info!("chain consensus group transaction received");
+        tracing::info!(
+            "chain consensus group transaction received @ {:?}",
+            block_height
+        );
 
         match Meta::last_reward_end_time(&self.pool).await {
             Err(_) => {
@@ -280,6 +283,7 @@ impl Server {
                     }
                     Some(last_reward_height) => {
                         if let Some(r) = rewards {
+                            tracing::info!("subnetwork rewards_len: {:?}", r.0.len());
                             self.issue_rewards(r, last_reward_height + 1, block_height as i64)
                                 .await?;
                         }
@@ -321,6 +325,7 @@ impl Server {
             )
             .await
         {
+            tracing::info!("updating pending_txn with hash {:?}", &txn_hash_str);
             PendingTxn::update(&self.pool, &txn_hash_str, Status::Pending, Utc::now()).await?;
         }
         Ok(())
