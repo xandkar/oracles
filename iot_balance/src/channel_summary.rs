@@ -83,7 +83,7 @@ pub fn construct_txn(
 ) -> Result<(BlockchainTxnSubnetworkRewardsV1, String)> {
     let mut txn = BlockchainTxnSubnetworkRewardsV1 {
         rewards: rewards.into(),
-        token_type: BlockchainTokenTypeV1::from(ProtoTokenType::Mobile).into(),
+        token_type: BlockchainTokenTypeV1::from(ProtoTokenType::Iot).into(),
         start_epoch: period.start,
         end_epoch: period.end,
         reward_server_signature: vec![],
