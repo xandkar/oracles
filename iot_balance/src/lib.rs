@@ -11,6 +11,7 @@ pub mod reward_share;
 pub mod server;
 pub mod subnetwork_reward;
 pub mod subnetwork_rewards;
+pub mod channel_summary;
 pub mod token_type;
 pub mod traits;
 pub mod transaction;
