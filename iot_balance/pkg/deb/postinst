@@ -1,0 +1,4 @@
+# add to /usr/local/bin it appears in path
+ln -s /opt/iot-balance/bin/iot-balance /usr/local/bin/iot-balance || true
+
+#DEBHELPER#
