@@ -1,9 +1,12 @@
 use crate::{
-    datetime_from_naive, heartbeat::CellHeartbeat, speedtest::CellSpeedtest, traits::MsgDecode,
-    Error, FileInfoStream, FileStore, FileType, PublicKey, Result,
+    datetime_from_naive, heartbeat::CellHeartbeat, lora_beacon_report::LoraBeaconIngestReport,
+    lora_valid_poc::LoraValidPoc, lora_witness_report::LoraWitnessIngestReport,
+    speedtest::CellSpeedtest, traits::MsgDecode, Error, FileInfoStream, FileStore, FileType,
+    Result,
 };
 use chrono::NaiveDateTime;
 use futures::{stream::TryStreamExt, StreamExt, TryFutureExt};
+use helium_crypto::PublicKey;
 use serde::{ser::SerializeSeq, Serializer};
 use std::{
     io,
@@ -205,7 +208,17 @@ fn locate(
         FileType::CellSpeedtest => {
             CellSpeedtest::decode(buf).and_then(|event| event.to_value_if(gateway))
         }
+        FileType::LoraBeaconIngestReport => {
+            LoraBeaconIngestReport::decode(buf).and_then(|event| event.to_value_if(gateway))
+        }
+        FileType::LoraWitnessIngestReport => {
+            LoraWitnessIngestReport::decode(buf).and_then(|event| event.to_value_if(gateway))
+        }
+        FileType::LoraValidPoc => {
+            LoraValidPoc::decode(buf).and_then(|event| event.to_value_if(gateway))
+        }
         FileType::Entropy => Ok(None),
+        _ => Ok(None),
     }
 }
 
@@ -251,5 +264,23 @@ impl Gateway for CellHeartbeat {
 impl Gateway for CellSpeedtest {
     fn pubkey(&self) -> &PublicKey {
         &self.pubkey
+    }
+}
+
+impl Gateway for LoraBeaconIngestReport {
+    fn pubkey(&self) -> &PublicKey {
+        &self.report.pub_key
+    }
+}
+
+impl Gateway for LoraWitnessIngestReport {
+    fn pubkey(&self) -> &PublicKey {
+        &self.report.pub_key
+    }
+}
+
+impl Gateway for LoraValidPoc {
+    fn pubkey(&self) -> &PublicKey {
+        &self.beacon_report.report.pub_key
     }
 }

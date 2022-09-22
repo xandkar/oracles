@@ -6,7 +6,9 @@ pub mod file_source;
 pub mod file_store;
 pub mod file_upload;
 pub mod heartbeat;
-pub mod public_key;
+pub mod lora_beacon_report;
+pub mod lora_valid_poc;
+pub mod lora_witness_report;
 pub mod speedtest;
 pub mod traits;
 
@@ -14,7 +16,6 @@ pub use error::{Error, Result};
 pub use file_info::{FileInfo, FileType};
 pub use file_sink::{FileSink, FileSinkBuilder};
 pub use file_store::FileStore;
-pub use public_key::PublicKey;
 
 use bytes::BytesMut;
 use chrono::{DateTime, NaiveDateTime, Utc};

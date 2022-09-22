@@ -1,3 +1,3 @@
 [workspace]
-members = [ "ingest", "store", "mobile_rewards", "iot_balance", "status", "entropy",
-"poc_iot_injector"]
+members = [ "ingest", "store", "mobile_rewards", "iot_balance", "status", "entropy", "lora_verifier"]
+
