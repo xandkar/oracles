@@ -1,10 +1,22 @@
-use crate::{cli::print_json, file_source, heartbeat::CellHeartbeat, FileType, Result};
+use crate::{
+    cli::print_json,
+    file_source,
+    heartbeat::{CellHeartbeat, CellHeartbeatIngestReport},
+    speedtest::{CellSpeedtest, CellSpeedtestIngestReport},
+    FileType, Result,
+};
 use csv::Writer;
 use futures::stream::StreamExt;
-use helium_proto::services::poc_lora::{
-    LoraBeaconIngestReportV1, LoraValidPocV1, LoraWitnessIngestReportV1,
+use helium_proto::{
+    services::{
+        poc_lora::{LoraBeaconIngestReportV1, LoraValidPocV1, LoraWitnessIngestReportV1},
+        poc_mobile::{
+            CellHeartbeatIngestReportV1, CellHeartbeatReqV1, SpeedtestIngestReportV1,
+            SpeedtestReqV1,
+        },
+    },
+    Message,
 };
-use helium_proto::{services::poc_mobile::CellHeartbeatReqV1, Message};
 use serde_json::json;
 use std::io;
 use std::path::PathBuf;
@@ -29,6 +41,20 @@ impl Cmd {
                 FileType::CellHeartbeat => {
                     let dec_msg = CellHeartbeatReqV1::decode(msg)?;
                     wtr.serialize(CellHeartbeat::try_from(dec_msg)?)?;
+                }
+                FileType::CellSpeedtest => {
+                    let dec_msg = SpeedtestReqV1::decode(msg)?;
+                    wtr.serialize(CellSpeedtest::try_from(dec_msg)?)?;
+                }
+                FileType::CellHeartbeatIngestReport => {
+                    let dec_msg = CellHeartbeatIngestReportV1::decode(msg)?;
+                    let ingest_report = CellHeartbeatIngestReport::try_from(dec_msg)?;
+                    print_json(&ingest_report)?;
+                }
+                FileType::CellSpeedtestIngestReport => {
+                    let dec_msg = SpeedtestIngestReportV1::decode(msg)?;
+                    let ingest_report = CellSpeedtestIngestReport::try_from(dec_msg)?;
+                    print_json(&ingest_report)?;
                 }
                 FileType::LoraBeaconIngestReport => {
                     let dec_msg = LoraBeaconIngestReportV1::decode(msg)?;

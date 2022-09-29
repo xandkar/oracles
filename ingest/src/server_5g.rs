@@ -1,13 +1,13 @@
 use crate::{error::DecodeError, Error, EventId, Result};
 use chrono::Utc;
+use file_store::traits::MsgVerify;
+use file_store::{file_sink, file_upload, FileType};
 use futures_util::TryFutureExt;
 use helium_crypto::PublicKey;
 use helium_proto::services::poc_mobile::{
     self, CellHeartbeatIngestReportV1, CellHeartbeatReqV1, CellHeartbeatRespV1,
     SpeedtestIngestReportV1, SpeedtestReqV1, SpeedtestRespV1,
 };
-use poc_store::traits::MsgVerify;
-use poc_store::{file_sink, file_upload, FileType};
 use std::env;
 use std::{net::SocketAddr, path::Path, str::FromStr};
 use tonic::{metadata::MetadataValue, transport, Request, Response, Status};
@@ -94,19 +94,25 @@ pub async fn grpc_server(shutdown: triggered::Listener, server_mode: String) -> 
     let store_base_path = Path::new(&store_path);
 
     let (heartbeat_tx, heartbeat_rx) = file_sink::message_channel(50);
-    let mut heartbeat_sink =
-        file_sink::FileSinkBuilder::new(FileType::CellHeartbeat, store_base_path, heartbeat_rx)
-            .deposits(Some(file_upload_tx.clone()))
-            .create()
-            .await?;
+    let mut heartbeat_sink = file_sink::FileSinkBuilder::new(
+        FileType::CellHeartbeatIngestReport,
+        store_base_path,
+        heartbeat_rx,
+    )
+    .deposits(Some(file_upload_tx.clone()))
+    .create()
+    .await?;
 
     // speedtests
     let (speedtest_tx, speedtest_rx) = file_sink::message_channel(50);
-    let mut speedtest_sink =
-        file_sink::FileSinkBuilder::new(FileType::CellSpeedtest, store_base_path, speedtest_rx)
-            .deposits(Some(file_upload_tx.clone()))
-            .create()
-            .await?;
+    let mut speedtest_sink = file_sink::FileSinkBuilder::new(
+        FileType::CellSpeedtestIngestReport,
+        store_base_path,
+        speedtest_rx,
+    )
+    .deposits(Some(file_upload_tx.clone()))
+    .create()
+    .await?;
 
     let grpc_server = GrpcServer {
         speedtest_tx,
