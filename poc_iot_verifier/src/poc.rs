@@ -241,10 +241,11 @@ impl Poc {
             .await
         {
             Ok(res) => res,
-            Err(_) => {
+            Err(e) => {
                 tracing::debug!(
-                    "witness verification failed, reason: {:?}",
-                    InvalidReason::GatewayNotFound
+                    "witness verification failed, reason: {:?}, details: {:?}",
+                    InvalidReason::GatewayNotFound,
+                    e
                 );
                 let resp = VerifyWitnessResult {
                     result: VerificationStatus::Failed,
