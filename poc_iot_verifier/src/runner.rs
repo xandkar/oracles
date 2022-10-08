@@ -192,8 +192,6 @@ impl Runner {
             // if not then go no further, await next tick
             // if we never recognise it, the report will eventually be purged
             let entropy_hash = Sha256::digest(&beacon.remote_entropy).to_vec();
-            tracing::debug!("beacon entropy {:?}", &beacon.remote_entropy);
-            tracing::debug!("beacon entropy id {:?}", &entropy_hash);
             let entropy_info = match Entropy::get(&self.pool, &entropy_hash).await? {
                 Some(res) => res,
                 None => {
