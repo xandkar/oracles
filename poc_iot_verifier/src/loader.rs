@@ -192,6 +192,7 @@ impl Loader {
             FileType::EntropyReport => {
                 let event = EntropyReportV1::decode(buf)?;
                 let id = Sha256::digest(&event.data).to_vec();
+                tracing::debug!("insert entropy with id {:?}", &id);
                 Entropy::insert_into(
                     &self.pool,
                     &id,
