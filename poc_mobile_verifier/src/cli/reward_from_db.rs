@@ -7,9 +7,9 @@ use crate::{
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
 use helium_crypto::PublicKey;
+use rust_decimal_macros::dec;
 use serde_json::json;
 use std::collections::HashMap;
-use rust_decimal_macros::dec;
 
 /// Reward a period from the entries in the database
 #[derive(Debug, clap::Args)]
@@ -76,10 +76,11 @@ impl Cmd {
             })
             .collect();
 
+        println!("{:#?}", combined_count);
+
         println!(
             "{}",
             serde_json::to_string_pretty(&json!({
-                "combined_count": combined_count,
                 "multiplier_count": multiplier_count,
                 "speedtest_multipliers": speedtest_multipliers,
                 "rewards": rewards,
