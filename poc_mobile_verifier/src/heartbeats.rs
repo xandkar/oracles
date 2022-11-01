@@ -30,11 +30,13 @@ pub struct HeartbeatKey {
     cbsd_id: String,
 }
 
+#[derive(Clone)]
 pub struct HeartbeatValue {
     reward_weight: Decimal,
     timestamp: NaiveDateTime,
 }
 
+#[derive(Clone)]
 pub struct Heartbeats {
     pub heartbeats: HashMap<HeartbeatKey, HeartbeatValue>,
 }

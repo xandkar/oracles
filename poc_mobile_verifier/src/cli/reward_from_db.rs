@@ -9,6 +9,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use helium_crypto::PublicKey;
 use serde_json::json;
 use std::collections::HashMap;
+use rust_decimal_macros::dec;
 
 /// Reward a period from the entries in the database
 #[derive(Debug, clap::Args)]
@@ -36,6 +37,17 @@ impl Cmd {
 
         let heartbeats = Heartbeats::validated(&pool, epoch.start).await?;
         let speedtests = SpeedtestAverages::validated(&pool, epoch.end).await?;
+        let mut combined_count = HashMap::<_, usize>::new();
+
+        for heartbeat in heartbeats.clone().into_iter() {
+            let speedtestmult = speedtests
+                .get_average(&heartbeat.hotspot_key)
+                .map_or(dec!(0.0), |avg| avg.reward_multiplier());
+            *combined_count
+                .entry((heartbeat.reward_weight, speedtestmult))
+                .or_default() += 1;
+        }
+
         let rewards =
             SubnetworkRewards::from_epoch(follower, &epoch, heartbeats, speedtests.clone()).await?;
 
@@ -67,6 +79,7 @@ impl Cmd {
         println!(
             "{}",
             serde_json::to_string_pretty(&json!({
+                "combined_count": combined_count,
                 "multiplier_count": multiplier_count,
                 "speedtest_multipliers": speedtest_multipliers,
                 "rewards": rewards,
