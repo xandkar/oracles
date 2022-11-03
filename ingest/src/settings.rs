@@ -1,7 +1,7 @@
 use crate::{error::DecodeError, Error, Result};
 use config::{Config, Environment, File};
 use helium_crypto::Network;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, path::Path, str::FromStr};
 
 #[derive(Debug, Deserialize)]
@@ -43,11 +43,20 @@ pub fn default_sink() -> String {
 
 /// Mode to deploy the ingest engine in. Each mode exposes different submission
 /// grpc methods
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
     Iot,
     Mobile,
+}
+
+impl std::fmt::Display for Mode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Iot => f.write_str("iot"),
+            Self::Mobile => f.write_str("mobile"),
+        }
+    }
 }
 
 impl Settings {

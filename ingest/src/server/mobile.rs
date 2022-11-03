@@ -155,12 +155,10 @@ pub async fn run(shutdown: triggered::Listener, settings: &Settings) -> Result {
         .ok_or_else(|| Error::not_found("expected api token in settings"))?;
 
     tracing::info!(
-        "grpc listening on {grpc_addr} and server mode {:?}",
+        "grpc listening on {grpc_addr} and server mode {}",
         settings.mode
     );
 
-    //TODO start a service with either the poc mobile or poc lora endpoints only - not both
-    //     use _server_mode (set above ) to decide
     let server = transport::Server::builder()
         .layer(poc_metrics::request_layer!("ingest_server_grpc_connection"))
         .add_service(poc_mobile::Server::with_interceptor(

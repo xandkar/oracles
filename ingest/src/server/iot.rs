@@ -134,7 +134,7 @@ pub async fn run(shutdown: triggered::Listener, settings: &Settings) -> Result {
     };
 
     tracing::info!(
-        "grpc listening on {grpc_addr} and server mode {:?}",
+        "grpc listening on {grpc_addr} and server mode {}",
         settings.mode
     );
 
