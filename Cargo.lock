@@ -2504,6 +2504,7 @@ dependencies = [
 name = "poc-ingest"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "base64",
  "chrono",
  "clap",
@@ -2514,8 +2515,10 @@ dependencies = [
  "helium-crypto",
  "helium-proto",
  "http",
+ "hyper",
  "metrics",
  "metrics-exporter-prometheus",
+ "pin-project",
  "poc-metrics",
  "prost",
  "serde",
@@ -2524,6 +2527,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tonic",
+ "tower",
  "tracing",
  "tracing-subscriber",
  "triggered",

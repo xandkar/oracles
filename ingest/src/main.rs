@@ -53,6 +53,7 @@ impl Server {
         let (shutdown_trigger, shutdown_listener) = triggered::trigger();
         tokio::spawn(async move {
             let _ = signal::ctrl_c().await;
+            tracing::info!("shutting down");
             shutdown_trigger.trigger()
         });
 

@@ -1,5 +1,5 @@
 use crate::{
-    server::{GrpcResult, VerifyResult},
+    server::{hybrid, GrpcResult, VerifyResult},
     Error, EventId, Result, Settings,
 };
 use chrono::Utc;
@@ -14,7 +14,7 @@ use helium_proto::services::poc_mobile::{
 use std::path::Path;
 use tonic::{metadata::MetadataValue, transport, Request, Response, Status};
 
-struct Server {
+struct GrpcServer {
     heartbeat_req_tx: file_sink::MessageSender,
     speedtest_req_tx: file_sink::MessageSender,
     heartbeat_report_tx: file_sink::MessageSender,
@@ -22,7 +22,7 @@ struct Server {
     required_network: Network,
 }
 
-impl Server {
+impl GrpcServer {
     fn decode_pub_key(&self, data: &[u8]) -> VerifyResult<PublicKey> {
         PublicKey::try_from(data).map_err(|_| Status::invalid_argument("invalid public key"))
     }
@@ -41,7 +41,7 @@ impl Server {
 }
 
 #[tonic::async_trait]
-impl poc_mobile::PocMobile for Server {
+impl poc_mobile::PocMobile for GrpcServer {
     async fn submit_speedtest(
         &self,
         request: Request<SpeedtestReqV1>,
@@ -91,6 +91,23 @@ impl poc_mobile::PocMobile for Server {
     }
 }
 
+#[derive(Debug, Clone)]
+struct WebServer {
+    mapper_report_tx: file_sink::MessageSender,
+    required_network: Network,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ConsoleEvent {}
+
+async fn submit_mapper_report(
+    axum::Json(_event): axum::Json<ConsoleEvent>,
+    _server: axum::Extension<WebServer>,
+) -> impl axum::response::IntoResponse {
+}
+
+async fn empty_handler() {}
+
 pub async fn run(shutdown: triggered::Listener, settings: &Settings) -> Result {
     let grpc_addr = settings.listen_addr()?;
 
@@ -136,7 +153,7 @@ pub async fn run(shutdown: triggered::Listener, settings: &Settings) -> Result {
     .create()
     .await?;
 
-    let grpc_server = Server {
+    let grpc_server = GrpcServer {
         heartbeat_req_tx,
         speedtest_req_tx,
         heartbeat_report_tx,
@@ -159,7 +176,7 @@ pub async fn run(shutdown: triggered::Listener, settings: &Settings) -> Result {
         settings.mode
     );
 
-    let server = transport::Server::builder()
+    let grpc_service = transport::Server::builder()
         .layer(poc_metrics::request_layer!("ingest_server_grpc_connection"))
         .add_service(poc_mobile::Server::with_interceptor(
             grpc_server,
@@ -168,7 +185,33 @@ pub async fn run(shutdown: triggered::Listener, settings: &Settings) -> Result {
                 _ => Err(Status::unauthenticated("No valid auth token")),
             },
         ))
-        .serve_with_shutdown(grpc_addr, shutdown.clone())
+        .into_service();
+
+    let (mapper_report_tx, mapper_report_rx) = file_sink::message_channel(50);
+    let mut mapper_report_sink = file_sink::FileSinkBuilder::new(
+        FileType::CellMapperIngestReport,
+        store_base_path,
+        mapper_report_rx,
+    )
+    .deposits(Some(file_upload_tx.clone()))
+    .create()
+    .await?;
+
+    let web_server = WebServer {
+        mapper_report_tx,
+        required_network: settings.network,
+    };
+
+    let web_service = axum::Router::new()
+        .route("/health", axum::routing::get(empty_handler))
+        .route("/mapper", axum::routing::post(submit_mapper_report))
+        .layer(axum::Extension(web_server))
+        .into_make_service();
+
+    let service = hybrid(web_service, grpc_service);
+    let server = hyper::Server::bind(&grpc_addr)
+        .serve(service)
+        .with_graceful_shutdown(shutdown.clone())
         .map_err(Error::from);
 
     tokio::try_join!(
@@ -177,6 +220,7 @@ pub async fn run(shutdown: triggered::Listener, settings: &Settings) -> Result {
         speedtest_req_sink.run(&shutdown).map_err(Error::from),
         heartbeat_report_sink.run(&shutdown).map_err(Error::from),
         speedtest_report_sink.run(&shutdown).map_err(Error::from),
+        mapper_report_sink.run(&shutdown).map_err(Error::from),
         file_upload.run(&shutdown).map_err(Error::from),
     )
     .map(|_| ())

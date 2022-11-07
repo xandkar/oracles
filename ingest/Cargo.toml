@@ -16,6 +16,7 @@ base64 = {workspace = true}
 sha2 = {workspace = true}
 http = {workspace = true}
 tonic = {workspace = true}
+tower = {workspace = true}
 triggered = {workspace = true}
 futures = {workspace = true}
 futures-util = {workspace = true}
@@ -30,6 +31,9 @@ file-store = { path = "../file_store" }
 poc-metrics = { path = "../metrics" }
 metrics = {workspace = true }
 metrics-exporter-prometheus = { workspace = true }
+pin-project = "1"
+axum = "0"
+hyper = "*"
 
 [package.metadata.deb]
 depends = "$auto"

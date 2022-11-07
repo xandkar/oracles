@@ -18,6 +18,8 @@ pub enum Error {
     Grpc(#[from] tonic::Status),
     #[error("service error")]
     Service(#[from] helium_proto::services::Error),
+    #[error("web service error")]
+    Web(#[from] hyper::Error),
     #[error("store error")]
     Store(#[from] file_store::Error),
     #[error("not found")]

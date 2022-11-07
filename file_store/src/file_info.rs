@@ -93,6 +93,7 @@ pub const CELL_HEARTBEAT: &str = "cell_heartbeat";
 pub const CELL_SPEEDTEST: &str = "cell_speedtest";
 pub const CELL_HEARTBEAT_INGEST_REPORT: &str = "heartbeat_report";
 pub const CELL_SPEEDTEST_INGEST_REPORT: &str = "speedtest_report";
+pub const CELL_MAPPER_INGEST_REPORT: &str = "mapper_report";
 pub const ENTROPY: &str = "entropy";
 pub const SUBNETWORK_REWARDS: &str = "subnetwork_rewards";
 pub const ENTROPY_REPORT: &str = "entropy_report";
@@ -114,6 +115,7 @@ pub enum FileType {
     SubnetworkRewards = 3,
     CellHeartbeatIngestReport,
     CellSpeedtestIngestReport,
+    CellMapperIngestReport,
     EntropyReport,
     LoraBeaconIngestReport,
     LoraWitnessIngestReport,
@@ -132,6 +134,7 @@ impl fmt::Display for FileType {
             Self::CellSpeedtest => CELL_SPEEDTEST,
             Self::CellHeartbeatIngestReport => CELL_HEARTBEAT_INGEST_REPORT,
             Self::CellSpeedtestIngestReport => CELL_SPEEDTEST_INGEST_REPORT,
+            Self::CellMapperIngestReport => CELL_MAPPER_INGEST_REPORT,
             Self::Entropy => ENTROPY,
             Self::SubnetworkRewards => SUBNETWORK_REWARDS,
             Self::EntropyReport => ENTROPY_REPORT,
@@ -155,6 +158,7 @@ impl FileType {
             Self::CellSpeedtest => CELL_SPEEDTEST,
             Self::CellHeartbeatIngestReport => CELL_HEARTBEAT_INGEST_REPORT,
             Self::CellSpeedtestIngestReport => CELL_SPEEDTEST_INGEST_REPORT,
+            Self::CellMapperIngestReport => CELL_MAPPER_INGEST_REPORT,
             Self::Entropy => ENTROPY,
             Self::SubnetworkRewards => SUBNETWORK_REWARDS,
             Self::EntropyReport => ENTROPY_REPORT,
@@ -178,6 +182,7 @@ impl FromStr for FileType {
             CELL_SPEEDTEST => Self::CellSpeedtest,
             CELL_HEARTBEAT_INGEST_REPORT => Self::CellHeartbeatIngestReport,
             CELL_SPEEDTEST_INGEST_REPORT => Self::CellSpeedtestIngestReport,
+            CELL_MAPPER_INGEST_REPORT => Self::CellMapperIngestReport,
             ENTROPY => Self::Entropy,
             SUBNETWORK_REWARDS => Self::SubnetworkRewards,
             ENTROPY_REPORT => Self::EntropyReport,

@@ -7,7 +7,7 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-tower = "0.4"
+tower = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }
