@@ -46,7 +46,7 @@ pub fn default_sink() -> String {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
-    Lora,
+    Iot,
     Mobile,
 }
 

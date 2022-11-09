@@ -1,4 +1,7 @@
-use crate::{Error, EventId, Result, Settings};
+use crate::{
+    server::{GrpcResult, VerifyResult},
+    Error, EventId, Result, Settings,
+};
 use chrono::Utc;
 use file_store::traits::MsgVerify;
 use file_store::{file_sink, file_sink_write, file_upload, FileType};
@@ -11,61 +14,53 @@ use helium_proto::services::poc_mobile::{
 use std::path::Path;
 use tonic::{metadata::MetadataValue, transport, Request, Response, Status};
 
-pub type GrpcResult<T> = std::result::Result<Response<T>, Status>;
-
-pub struct GrpcServer {
+struct Server {
+    heartbeat_req_tx: file_sink::MessageSender,
+    speedtest_req_tx: file_sink::MessageSender,
     heartbeat_report_tx: file_sink::MessageSender,
     speedtest_report_tx: file_sink::MessageSender,
     required_network: Network,
 }
 
-impl GrpcServer {
-    fn new(
-        heartbeat_report_tx: file_sink::MessageSender,
-        speedtest_report_tx: file_sink::MessageSender,
-        required_network: Network,
-    ) -> Result<Self> {
-        Ok(Self {
-            heartbeat_report_tx,
-            speedtest_report_tx,
-            required_network,
-        })
+impl Server {
+    fn decode_pub_key(&self, data: &[u8]) -> VerifyResult<PublicKey> {
+        PublicKey::try_from(data).map_err(|_| Status::invalid_argument("invalid public key"))
     }
 
-    fn verify_network(&self, public_key: &PublicKey) -> GrpcResult<()> {
-        if self.required_network == public_key.network {
-            Ok(Response::new(()))
-        } else {
-            Err(Status::invalid_argument("invalid network"))
-        }
+    fn verify_network(&self, public_key: PublicKey) -> VerifyResult<PublicKey> {
+        (self.required_network == public_key.network)
+            .then_some(public_key)
+            .ok_or_else(|| Status::invalid_argument("invalid network"))
+    }
+
+    fn verify_signature(&self, pub_key: &PublicKey, event: impl MsgVerify) -> VerifyResult<()> {
+        event
+            .verify(pub_key)
+            .map_err(|_| Status::invalid_argument("invalid signature"))
     }
 }
 
 #[tonic::async_trait]
-impl poc_mobile::PocMobile for GrpcServer {
+impl poc_mobile::PocMobile for Server {
     async fn submit_speedtest(
         &self,
         request: Request<SpeedtestReqV1>,
     ) -> GrpcResult<SpeedtestRespV1> {
-        let timestamp = Utc::now().timestamp_millis() as u64;
         let event = request.into_inner();
 
-        let public_key = PublicKey::try_from(event.pub_key.as_ref())
-            .map_err(|_| Status::invalid_argument("invalid public key"))?;
+        self.decode_pub_key(event.pub_key.as_ref())
+            .and_then(|pub_key| self.verify_network(pub_key))
+            .and_then(|pub_key| self.verify_signature(&pub_key, event.clone()))?;
 
-        self.verify_network(&public_key)?;
-
-        event
-            .verify(&public_key)
-            .map_err(|_| Status::invalid_argument("invalid signature"))?;
-        // Encode event digest, encode and return as the id
         let event_id = EventId::from(&event);
+        let received_timestamp: u64 = Utc::now().timestamp_millis() as u64;
 
         let report = SpeedtestIngestReportV1 {
-            report: Some(event),
-            received_timestamp: timestamp,
+            report: Some(event.clone()),
+            received_timestamp,
         };
 
+        _ = file_sink_write!("speedtest_req", &self.speedtest_req_tx, event).await;
         _ = file_sink_write!("speedtest_report", &self.speedtest_report_tx, report).await;
         metrics::increment_counter!("ingest_server_speedtest_count");
         Ok(Response::new(event_id.into()))
@@ -75,32 +70,28 @@ impl poc_mobile::PocMobile for GrpcServer {
         &self,
         request: Request<CellHeartbeatReqV1>,
     ) -> GrpcResult<CellHeartbeatRespV1> {
-        let timestamp = Utc::now().timestamp_millis() as u64;
         let event = request.into_inner();
 
-        let public_key = PublicKey::try_from(event.pub_key.as_slice())
-            .map_err(|_| Status::invalid_argument("invalid public key"))?;
+        self.decode_pub_key(event.pub_key.as_ref())
+            .and_then(|pub_key| self.verify_network(pub_key))
+            .and_then(|pub_key| self.verify_signature(&pub_key, event.clone()))?;
 
-        self.verify_network(&public_key)?;
-
-        event
-            .verify(&public_key)
-            .map_err(|_| Status::invalid_argument("invalid signature"))?;
         let event_id = EventId::from(&event);
+        let received_timestamp: u64 = Utc::now().timestamp_millis() as u64;
 
         let report = CellHeartbeatIngestReportV1 {
-            report: Some(event),
-            received_timestamp: timestamp,
+            report: Some(event.clone()),
+            received_timestamp,
         };
 
+        _ = file_sink_write!("heartbeat_req", &self.heartbeat_req_tx, event).await;
         _ = file_sink_write!("heartbeat_report", &self.heartbeat_report_tx, report).await;
         metrics::increment_counter!("ingest_server_heartbeat_count");
-        // Encode event digest, encode and return as the id
         Ok(Response::new(event_id.into()))
     }
 }
 
-pub async fn grpc_server(shutdown: triggered::Listener, settings: &Settings) -> Result {
+pub async fn run(shutdown: triggered::Listener, settings: &Settings) -> Result {
     let grpc_addr = settings.listen_addr()?;
 
     // Initialize uploader
@@ -109,6 +100,13 @@ pub async fn grpc_server(shutdown: triggered::Listener, settings: &Settings) -> 
         file_upload::FileUpload::from_settings(&settings.output, file_upload_rx).await?;
 
     let store_base_path = Path::new(&settings.cache);
+
+    let (heartbeat_req_tx, heartbeat_req_rx) = file_sink::message_channel(50);
+    let mut heartbeat_req_sink =
+        file_sink::FileSinkBuilder::new(FileType::CellHeartbeat, store_base_path, heartbeat_req_rx)
+            .deposits(Some(file_upload_tx.clone()))
+            .create()
+            .await?;
 
     let (heartbeat_report_tx, heartbeat_report_rx) = file_sink::message_channel(50);
     let mut heartbeat_report_sink = file_sink::FileSinkBuilder::new(
@@ -121,6 +119,13 @@ pub async fn grpc_server(shutdown: triggered::Listener, settings: &Settings) -> 
     .await?;
 
     // speedtests
+    let (speedtest_req_tx, speedtest_req_rx) = file_sink::message_channel(50);
+    let mut speedtest_req_sink =
+        file_sink::FileSinkBuilder::new(FileType::CellSpeedtest, store_base_path, speedtest_req_rx)
+            .deposits(Some(file_upload_tx.clone()))
+            .create()
+            .await?;
+
     let (speedtest_report_tx, speedtest_report_rx) = file_sink::message_channel(50);
     let mut speedtest_report_sink = file_sink::FileSinkBuilder::new(
         FileType::CellSpeedtestIngestReport,
@@ -131,7 +136,13 @@ pub async fn grpc_server(shutdown: triggered::Listener, settings: &Settings) -> 
     .create()
     .await?;
 
-    let grpc_server = GrpcServer::new(heartbeat_report_tx, speedtest_report_tx, settings.network)?;
+    let grpc_server = Server {
+        heartbeat_req_tx,
+        speedtest_req_tx,
+        heartbeat_report_tx,
+        speedtest_report_tx,
+        required_network: settings.network,
+    };
 
     let api_token = settings
         .token
@@ -164,6 +175,8 @@ pub async fn grpc_server(shutdown: triggered::Listener, settings: &Settings) -> 
 
     tokio::try_join!(
         server,
+        heartbeat_req_sink.run(&shutdown).map_err(Error::from),
+        speedtest_req_sink.run(&shutdown).map_err(Error::from),
         heartbeat_report_sink.run(&shutdown).map_err(Error::from),
         speedtest_report_sink.run(&shutdown).map_err(Error::from),
         file_upload.run(&shutdown).map_err(Error::from),
