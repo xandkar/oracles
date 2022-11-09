@@ -1,3 +1,10 @@
+///
+/// From:
+/// https://github.com/snoyberg/tonic-example/blob/master/src/bin/server-hybrid.rs
+///
+/// Once axum 0.6 is released this example
+/// https://github.com/tokio-rs/axum/tree/main/examples/rest-grpc-multiplex is a
+/// simple way to solve a mixed grpc/web server
 use std::future::Future;
 use std::pin::Pin;
 use std::task::Poll;
