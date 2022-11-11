@@ -189,6 +189,11 @@ impl Runner {
             let beacon_verify_result = poc.verify_beacon().await?;
             match beacon_verify_result.result {
                 VerificationStatus::Valid => {
+                    tracing::info!(
+                        "valid beacon. entropy: {:?}, id: {:?}",
+                        beacon.data,
+                        beacon_report.ingest_id()
+                    );
                     // beacon is valid, verify the POC witnesses
                     if let Some(beacon_info) = beacon_verify_result.gateway_info {
                         let verified_witnesses_result = poc.verify_witnesses(&beacon_info).await?;
@@ -230,10 +235,16 @@ impl Runner {
                 }
                 VerificationStatus::Invalid => {
                     // the beacon is invalid, which in turn renders all witnesses invalid
+                    tracing::info!(
+                        "invalid beacon. entropy: {:?}, id: {:?}, reason: {:?}",
+                        beacon.data,
+                        beacon_report.ingest_id(),
+                        beacon_verify_result.invalid_reason.unwrap()
+                    );
                     self.handle_invalid_poc(
                         &beacon_report,
                         witnesses,
-                        InvalidReason::BadEntropy,
+                        beacon_verify_result.invalid_reason.unwrap(),
                         &lora_invalid_beacon_tx,
                         &lora_invalid_witness_tx,
                     )
@@ -325,7 +336,6 @@ impl Runner {
         lora_valid_poc_tx: &MessageSender,
         lora_invalid_witness_tx: &MessageSender,
     ) -> Result {
-        let poc_id = &beacon.data;
         let received_timestamp = valid_beacon_report.received_timestamp;
         let beacon_id = valid_beacon_report.report.report_id(received_timestamp);
         let beacon_report_id = valid_beacon_report.report.report_id(received_timestamp);
@@ -348,7 +358,7 @@ impl Runner {
         // valid beacons and witness reports are kept in the DB
         // until after they have been rewarded
         // for now we just have to update their status to valid
-        Report::update_status(&self.pool, poc_id, LoraStatus::Valid, Utc::now()).await?;
+        Report::update_status(&self.pool, &beacon_id, LoraStatus::Valid, Utc::now()).await?;
         // update timestamp of last beacon for the beaconer
         LastBeacon::update_last_timestamp(&self.pool, &beacon.pub_key.to_vec(), received_timestamp)
             .await?;

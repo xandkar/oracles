@@ -161,6 +161,8 @@ impl Loader {
                 let beacon: LoraBeaconIngestReport =
                     LoraBeaconIngestReportV1::decode(buf)?.try_into()?;
                 tracing::debug!("beacon report from ingestor: {:?}", &beacon);
+                //tracing::info!("loading beacon report. entropy: {:?}, ts: {:?}, pubkey: {:?}",
+                //    beacon.report.data, beacon.received_timestamp, beacon.report.pub_key);
                 let packet_data = beacon.report.data.clone();
                 match self.check_valid_gateway(&beacon.report.pub_key).await {
                     true => {
