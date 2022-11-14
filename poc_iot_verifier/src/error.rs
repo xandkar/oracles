@@ -44,6 +44,8 @@ pub enum Error {
     DensityScaler(#[from] density_scaler::Error),
     #[error("denylist error")]
     DenyList(#[from] denylist::Error),
+    #[error("invalid exponent {0} error")]
+    InvalidExponent(String),
 }
 
 #[derive(Error, Debug)]

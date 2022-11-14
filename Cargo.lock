@@ -1750,7 +1750,7 @@ dependencies = [
 [[package]]
 name = "helium-proto"
 version = "0.1.0"
-source = "git+https://github.com/helium/proto?branch=master#48cc8ed277fed81a3e197521460a780083fd761b"
+source = "git+https://github.com/helium/proto?branch=jg/reward-unit-xfr#b5a8220d5f0a0a4233dbcda188a03e9f250ec9ea"
 dependencies = [
  "bytes",
  "prost",
