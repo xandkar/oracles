@@ -12,8 +12,7 @@ use helium_proto::{
     GatewayStakingMode,
 };
 use node_follower::{
-    follower_service::FollowerService,
-    gateway_resp::{GatewayInfo, GatewayInfoResolver},
+    gateway_resp::{GatewayInfo},
 };
 use rust_decimal::Decimal;
 use sqlx::PgPool;
@@ -190,8 +189,8 @@ impl Poc {
         }
 
         // beaconer location is guaranteed to unwrap as we've already checked and returned early above when it's `None`
-        let scaling_factor = density_queries.query(beaconer_location.to_string()).await?;
-
+        // let scaling_factor = density_queries.query(beaconer_location.to_string()).await?;
+        let scaling_factor = Some(Decimal::ONE);
         tracing::debug!("beacon verification success");
         // all is good with the beacon
         let resp = VerifyBeaconResult {
@@ -221,10 +220,11 @@ impl Poc {
                     let gw_info: GatewayInfo = witness_result.gateway_info.ok_or_else(|| {
                         Error::not_found("invalid FollowerGatewayResp for witness")
                     })?;
-                    let scaling_factor = density_queries
-                        .query(gw_info.location.unwrap_or_default().to_string())
-                        .await?
-                        .unwrap_or(Decimal::ONE);
+                    // let scaling_factor = density_queries
+                    //     .query(gw_info.location.unwrap_or_default().to_string())
+                    //     .await?
+                    //     .unwrap_or(Decimal::ONE);
+                    let scaling_factor = Decimal::ONE;
                     let valid_witness = LoraValidWitnessReport {
                         received_timestamp: witness_report.received_timestamp,
                         location: gw_info.location,

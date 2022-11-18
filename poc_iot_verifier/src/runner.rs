@@ -30,11 +30,10 @@ use sqlx::PgPool;
 use std::path::Path;
 use tokio::time;
 
-const BEACON_WORKERS: usize = 30;
 /// the cadence in seconds at which the DB is polled for ready POCs
 const DB_POLL_TIME: time::Duration = time::Duration::from_secs(8 * 60 + 10);
-const LOADER_WORKERS: usize = 40;
-const LOADER_DB_POOL_SIZE: usize = 2 * LOADER_WORKERS;
+const BEACON_WORKERS: usize = 50;
+const RUNNER_DB_POOL_SIZE: usize = 2 * BEACON_WORKERS;
 
 pub struct Runner {
     pool: PgPool,
@@ -45,7 +44,7 @@ pub struct Runner {
 
 impl Runner {
     pub async fn from_settings(settings: &Settings) -> Result<Self> {
-        let pool = settings.database.connect(LOADER_DB_POOL_SIZE).await?;
+        let pool = settings.database.connect(RUNNER_DB_POOL_SIZE).await?;
         // let follower_cache = GatewayCache::from_settings(settings).await?;
         Ok(Self {
             pool,
@@ -83,7 +82,7 @@ impl Runner {
             lora_invalid_beacon_rx,
         )
         .deposits(Some(file_upload_tx.clone()))
-        .roll_time(ChronoDuration::minutes(1))
+        .roll_time(ChronoDuration::minutes(15))
         .create()
         .await?;
 
@@ -93,7 +92,7 @@ impl Runner {
             lora_invalid_witness_rx,
         )
         .deposits(Some(file_upload_tx.clone()))
-        .roll_time(ChronoDuration::minutes(5))
+        .roll_time(ChronoDuration::minutes(15))
         .create()
         .await?;
 
@@ -103,7 +102,7 @@ impl Runner {
             lora_valid_poc_rx,
         )
         .deposits(Some(file_upload_tx.clone()))
-        .roll_time(ChronoDuration::minutes(15))
+        .roll_time(ChronoDuration::minutes(10))
         .create()
         .await?;
 
