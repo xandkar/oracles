@@ -26,7 +26,10 @@ impl GatewayCache {
 
     pub async fn resolve_gateway_info(&self, address: &PublicKey) -> Result<GatewayInfo> {
         match self.cache.get(address).await {
-            Some(hit) => Ok(hit.value().clone()),
+            Some(hit) => {
+                tracing::info!("gateway cache hit: {:?}", address);
+                Ok(hit.value().clone())
+            }
             _ => {
                 match self
                     .follower_service
