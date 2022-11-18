@@ -1,13 +1,11 @@
-use crate::{
-    Error, Result, Settings,
-};
+use crate::{Error, Result, Settings};
+use helium_crypto::PublicKey;
 use node_follower::{
     follower_service::FollowerService,
     gateway_resp::{GatewayInfo, GatewayInfoResolver},
 };
-use helium_crypto::PublicKey;
 use retainer::*;
-use std::time::{Duration,};
+use std::time::Duration;
 
 const CACHE_TTL: u64 = 86400;
 
@@ -15,7 +13,6 @@ pub struct GatewayCache {
     pub follower_service: FollowerService,
     pub cache: Cache<PublicKey, GatewayInfo>,
 }
-
 
 impl GatewayCache {
     pub async fn from_settings(settings: &Settings) -> Result<Self> {
@@ -29,29 +26,23 @@ impl GatewayCache {
 
     pub async fn resolve_gateway_info(&self, address: &PublicKey) -> Result<GatewayInfo> {
         match self.cache.get(address).await {
-            Some(hit) => {
-                tracing::info!("rerturning cached gateway info for key: {:?}", address);
-                Ok(hit.value().clone())
-            }
+            Some(hit) => Ok(hit.value().clone()),
             _ => {
-            match self
-                .follower_service
-                .clone()
-                .resolve_gateway_info(address)
-                .await
-            {
-                Ok(res) => {
-                    self.cache.insert(address.clone(), res.clone(),  Duration::from_secs(CACHE_TTL)).await;
-                    Ok(res)
-                },
-                _ =>  Err(Error::GatewayNotFound(format!("{address}"))),
+                match self
+                    .follower_service
+                    .clone()
+                    .resolve_gateway_info(address)
+                    .await
+                {
+                    Ok(res) => {
+                        self.cache
+                            .insert(address.clone(), res.clone(), Duration::from_secs(CACHE_TTL))
+                            .await;
+                        Ok(res)
+                    }
+                    _ => Err(Error::GatewayNotFound(format!("{address}"))),
+                }
             }
         }
     }
-}
-
-
-
-
-
 }

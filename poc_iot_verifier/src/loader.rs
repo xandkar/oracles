@@ -1,9 +1,9 @@
 use crate::{
     entropy::Entropy,
+    follower_cache::GatewayCache,
     meta::Meta,
     poc_report::{Report, ReportType},
     Result, Settings,
-    follower_cache::GatewayCache,
 };
 use chrono::{Duration as ChronoDuration, Utc};
 use denylist::DenyList;
@@ -19,7 +19,6 @@ use helium_proto::{
     services::poc_lora::{LoraBeaconIngestReportV1, LoraWitnessIngestReportV1},
     EntropyReportV1, Message,
 };
-use node_follower::{follower_service::FollowerService};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use std::time::Duration;
@@ -55,7 +54,7 @@ impl Loader {
         let pool = settings.database.connect(LOADER_DB_POOL_SIZE).await?;
         let ingest_store = FileStore::from_settings(&settings.ingest).await?;
         let entropy_store = FileStore::from_settings(&settings.entropy).await?;
-        let follower_cache = GatewayCache::from_settings(&settings).await?;
+        let follower_cache = GatewayCache::from_settings(settings).await?;
         let deny_list = DenyList::new()?;
         Ok(Self {
             pool,
@@ -230,9 +229,7 @@ impl Loader {
                         )
                         .await
                     }
-                    false => {
-                        Ok(())
-                    }
+                    false => Ok(()),
                 }
             }
             FileType::EntropyReport => {
