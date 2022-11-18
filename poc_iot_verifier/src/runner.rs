@@ -31,7 +31,7 @@ use std::path::Path;
 use tokio::time;
 
 /// the cadence in seconds at which the DB is polled for ready POCs
-const DB_POLL_TIME: time::Duration = time::Duration::from_secs(8 * 60 + 10);
+const DB_POLL_TIME: time::Duration = time::Duration::from_secs(4 * 60);
 const BEACON_WORKERS: usize = 40;
 const RUNNER_DB_POOL_SIZE: usize = 2 * BEACON_WORKERS;
 
