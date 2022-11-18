@@ -9,6 +9,6 @@ pub mod purger;
 pub mod runner;
 mod settings;
 pub mod traits;
-
+pub mod follower_cache;
 pub use error::{Error, Result};
 pub use settings::Settings;

@@ -8,7 +8,7 @@ use retainer::*;
 
 #[async_trait]
 pub trait GatewayInfoResolver {
-    async fn resolve_gateway_info(&mut self, address: &PublicKey, cache: Option<&Cache<PublicKey, GatewayInfo>>) -> Result<GatewayInfo>;
+    async fn resolve_gateway_info(&mut self, address: &PublicKey) -> Result<GatewayInfo>;
 }
 
 #[derive(Debug, Clone)]

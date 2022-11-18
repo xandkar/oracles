@@ -3,6 +3,7 @@ use crate::{
     meta::Meta,
     poc_report::{Report, ReportType},
     Result, Settings,
+    follower_cache::GatewayCache,
 };
 use chrono::{Duration as ChronoDuration, Utc};
 use denylist::DenyList;
@@ -18,12 +19,11 @@ use helium_proto::{
     services::poc_lora::{LoraBeaconIngestReportV1, LoraWitnessIngestReportV1},
     EntropyReportV1, Message,
 };
-use node_follower::{follower_service::FollowerService, gateway_resp::GatewayInfoResolver,  gateway_resp::{GatewayInfo}};
+use node_follower::{follower_service::FollowerService};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use std::time::Duration;
 use tokio::time;
-use retainer::*;
 
 /// cadence for how often to look for new beacon and witness reports from s3 bucket
 const REPORTS_POLL_TIME: time::Duration = time::Duration::from_secs(60 * 5 + 10);
@@ -43,11 +43,10 @@ pub struct Loader {
     ingest_store: FileStore,
     entropy_store: FileStore,
     pool: PgPool,
-    follower_service: FollowerService,
+    follower_cache: GatewayCache,
     deny_list_latest_url: String,
     deny_list_trigger_interval: Duration,
     deny_list: DenyList,
-    pub cache: Cache<PublicKey, GatewayInfo>,
 }
 
 impl Loader {
@@ -56,18 +55,16 @@ impl Loader {
         let pool = settings.database.connect(LOADER_DB_POOL_SIZE).await?;
         let ingest_store = FileStore::from_settings(&settings.ingest).await?;
         let entropy_store = FileStore::from_settings(&settings.entropy).await?;
-        let follower_service = FollowerService::from_settings(&settings.follower)?;
+        let follower_cache = GatewayCache::from_settings(&settings).await?;
         let deny_list = DenyList::new()?;
-        let cache = Cache::<PublicKey, GatewayInfo>::new();
         Ok(Self {
             pool,
             ingest_store,
             entropy_store,
-            follower_service,
+            follower_cache,
             deny_list_latest_url: settings.denylist.denylist_url.clone(),
             deny_list_trigger_interval: settings.denylist.trigger_interval(),
             deny_list,
-            cache,
         })
     }
 
@@ -271,9 +268,8 @@ impl Loader {
     }
 
     async fn check_unknown_gw(&self, pub_key: &PublicKey) -> bool {
-        self.follower_service
-            .clone()
-            .resolve_gateway_info(pub_key, Some(&self.cache))
+        self.follower_cache
+            .resolve_gateway_info(pub_key)
             .await
             .is_err()
     }
