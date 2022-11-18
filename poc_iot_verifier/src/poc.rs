@@ -1,4 +1,4 @@
-use crate::{entropy::ENTROPY_LIFESPAN, last_beacon::LastBeacon, Error, Result};
+use crate::{entropy::ENTROPY_LIFESPAN, last_beacon::LastBeacon, Error, Result, gateway_cache::GatewayCache,};
 use chrono::{DateTime, Duration, Utc};
 use density_scaler::QuerySender;
 use file_store::{
@@ -39,7 +39,6 @@ pub struct Poc {
     witness_reports: Vec<LoraWitnessIngestReport>,
     entropy_start: DateTime<Utc>,
     entropy_end: DateTime<Utc>,
-    follower_service: FollowerService,
     pool: PgPool,
 }
 
@@ -67,7 +66,6 @@ impl Poc {
         beacon_report: LoraBeaconIngestReport,
         witness_reports: Vec<LoraWitnessIngestReport>,
         entropy_start: DateTime<Utc>,
-        follower_service: FollowerService,
         pool: PgPool,
     ) -> Result<Self> {
         let entropy_end = entropy_start + Duration::seconds(ENTROPY_LIFESPAN);
@@ -76,7 +74,6 @@ impl Poc {
             witness_reports,
             entropy_start,
             entropy_end,
-            follower_service,
             pool,
         })
     }
@@ -84,6 +81,7 @@ impl Poc {
     pub async fn verify_beacon(
         &mut self,
         density_queries: QuerySender,
+        gateway_cache: &GatewayCache,
     ) -> Result<VerifyBeaconResult> {
         let beacon = &self.beacon_report.report;
         // use pub key to get GW info from our follower
@@ -91,8 +89,7 @@ impl Poc {
         let beacon_received_ts = self.beacon_report.received_timestamp;
 
         // pull the beaconer info from our follower
-        let beaconer_info = match self
-            .follower_service
+        let beaconer_info = match gateway_cache
             .resolve_gateway_info(&beaconer_pub_key)
             .await
         {
@@ -211,13 +208,14 @@ impl Poc {
         &mut self,
         beacon_info: &GatewayInfo,
         density_queries: QuerySender,
+        gateway_cache: &GatewayCache,
     ) -> Result<VerifyWitnessesResult> {
         let mut valid_witnesses: Vec<LoraValidWitnessReport> = Vec::new();
         let mut invalid_witnesses: Vec<LoraInvalidWitnessReport> = Vec::new();
         let mut failed_witnesses: Vec<LoraInvalidWitnessReport> = Vec::new();
         let witnesses = self.witness_reports.clone();
         for witness_report in witnesses {
-            let witness_result = self.verify_witness(&witness_report, beacon_info).await?;
+            let witness_result = self.verify_witness(&witness_report, beacon_info, gateway_cache).await?;
             match witness_result.result {
                 VerificationStatus::Valid => {
                     let gw_info: GatewayInfo = witness_result.gateway_info.ok_or_else(|| {
@@ -275,14 +273,14 @@ impl Poc {
         &mut self,
         witness_report: &LoraWitnessIngestReport,
         beaconer_info: &GatewayInfo,
+        gateway_cache: &GatewayCache
     ) -> Result<VerifyWitnessResult> {
         let witness = &witness_report.report;
         let beacon = &self.beacon_report.report;
         let witness_pub_key = witness.pub_key.clone();
 
         // use pub key to get GW info from our follower and verify the witness
-        let witness_info = match self
-            .follower_service
+        let witness_info = match gateway_cache
             .resolve_gateway_info(&witness_pub_key)
             .await
         {

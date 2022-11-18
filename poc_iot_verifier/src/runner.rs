@@ -1,4 +1,5 @@
 use crate::{
+    gateway_cache::GatewayCache,
     last_beacon::LastBeacon,
     poc::{Poc, VerificationStatus, VerifyWitnessesResult},
     poc_report::{LoraStatus, Report},
@@ -39,18 +40,18 @@ const LOADER_DB_POOL_SIZE: usize = 2 * LOADER_WORKERS;
 pub struct Runner {
     pool: PgPool,
     settings: Settings,
-    follower_service: FollowerService,
+    follower_cache: GatewayCache,
     density_queries: Option<QuerySender>,
 }
 
 impl Runner {
     pub async fn from_settings(settings: &Settings) -> Result<Self> {
         let pool = settings.database.connect(LOADER_DB_POOL_SIZE).await?;
-        let follower_service = FollowerService::from_settings(&settings.follower)?;
+        let follower_cache = GatewayCache::from_settings(settings).await?;
         Ok(Self {
             pool,
             settings: settings.clone(),
-            follower_service,
+            follower_cache,
             density_queries: None,
         })
     }
@@ -219,7 +220,6 @@ impl Runner {
             beacon_report.clone(),
             witnesses.clone(),
             entropy_start_time,
-            self.follower_service.clone(),
             self.pool.clone(),
         )
         .await?;
@@ -229,7 +229,7 @@ impl Runner {
             None => return Err(Error::custom("missing density scaler query sender")),
         };
         // verify POC beacon
-        let beacon_verify_result = poc.verify_beacon(density_queries.clone()).await?;
+        let beacon_verify_result = poc.verify_beacon(density_queries.clone(), &self.follower_cache).await?;
         match beacon_verify_result.result {
             VerificationStatus::Valid => {
                 tracing::debug!(
@@ -240,7 +240,7 @@ impl Runner {
                 // beacon is valid, verify the POC witnesses
                 if let Some(beacon_info) = beacon_verify_result.gateway_info {
                     let verified_witnesses_result =
-                        poc.verify_witnesses(&beacon_info, density_queries).await?;
+                        poc.verify_witnesses(&beacon_info, density_queries, &self.follower_cache).await?;
                     // check if there are any failed witnesses
                     // if so update the DB attempts count
                     // and halt here, let things be reprocessed next tick
