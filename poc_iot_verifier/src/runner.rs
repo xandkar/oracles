@@ -225,7 +225,7 @@ impl Runner {
             beacon_report.clone(),
             witnesses.clone(),
             entropy_start_time,
-            self.pool.clone(),
+            // &self.pool,
         )
         .await?;
 
@@ -235,7 +235,7 @@ impl Runner {
         };
         // verify POC beacon
         let beacon_verify_result = poc
-            .verify_beacon(density_queries.clone(), gateway_cache)
+            .verify_beacon(density_queries.clone(), gateway_cache, &self.pool)
             .await?;
         match beacon_verify_result.result {
             VerificationStatus::Valid => {

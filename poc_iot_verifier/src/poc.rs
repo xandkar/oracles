@@ -38,7 +38,7 @@ pub struct Poc {
     witness_reports: Vec<LoraWitnessIngestReport>,
     entropy_start: DateTime<Utc>,
     entropy_end: DateTime<Utc>,
-    pool: PgPool,
+    // pool: PgPool,
 }
 
 pub struct VerifyBeaconResult {
@@ -65,7 +65,7 @@ impl Poc {
         beacon_report: LoraBeaconIngestReport,
         witness_reports: Vec<LoraWitnessIngestReport>,
         entropy_start: DateTime<Utc>,
-        pool: PgPool,
+        // pool: PgPool,
     ) -> Result<Self> {
         let entropy_end = entropy_start + Duration::seconds(ENTROPY_LIFESPAN);
         Ok(Self {
@@ -73,7 +73,7 @@ impl Poc {
             witness_reports,
             entropy_start,
             entropy_end,
-            pool,
+            // pool,
         })
     }
 
@@ -81,6 +81,7 @@ impl Poc {
         &mut self,
         density_queries: QuerySender,
         gateway_cache: &GatewayCache,
+        pool: &PgPool,
     ) -> Result<VerifyBeaconResult> {
         let beacon = &self.beacon_report.report;
         // use pub key to get GW info from our follower
@@ -105,7 +106,7 @@ impl Poc {
 
         // is beaconer allowed to beacon at this time ?
         // any irregularily timed beacons will be rejected
-        match LastBeacon::get(&self.pool, &beaconer_pub_key.to_vec()).await? {
+        match LastBeacon::get(pool, &beaconer_pub_key.to_vec()).await? {
             Some(last_beacon) => {
                 let interval_since_last_beacon = beacon_received_ts - last_beacon.timestamp;
                 if interval_since_last_beacon < Duration::seconds(BEACON_INTERVAL) {
