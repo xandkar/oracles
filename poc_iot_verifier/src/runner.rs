@@ -201,7 +201,7 @@ impl Runner {
 
         let db_witnesses = Report::get_witnesses_for_beacon(&self.pool, packet_data).await?;
         let witness_len = db_witnesses.len();
-        tracing::info!("found {witness_len} witness for beacon");
+        tracing::debug!("found {witness_len} witness for beacon");
         metrics::gauge!(
             "oracles_poc_iot_verifier_witnesses_per_beacon",
             witness_len as f64
