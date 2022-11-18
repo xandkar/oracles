@@ -42,7 +42,7 @@ pub struct Loader {
     ingest_store: FileStore,
     entropy_store: FileStore,
     pool: PgPool,
-    follower_cache: GatewayCache,
+    // follower_cache: GatewayCache,
     deny_list_latest_url: String,
     deny_list_trigger_interval: Duration,
     deny_list: DenyList,
@@ -54,20 +54,20 @@ impl Loader {
         let pool = settings.database.connect(LOADER_DB_POOL_SIZE).await?;
         let ingest_store = FileStore::from_settings(&settings.ingest).await?;
         let entropy_store = FileStore::from_settings(&settings.entropy).await?;
-        let follower_cache = GatewayCache::from_settings(settings).await?;
+        // let follower_cache = GatewayCache::from_settings(settings).await?;
         let deny_list = DenyList::new()?;
         Ok(Self {
             pool,
             ingest_store,
             entropy_store,
-            follower_cache,
+            // follower_cache,
             deny_list_latest_url: settings.denylist.denylist_url.clone(),
             deny_list_trigger_interval: settings.denylist.trigger_interval(),
             deny_list,
         })
     }
 
-    pub async fn run(&mut self, shutdown: &triggered::Listener) -> Result {
+    pub async fn run(&mut self, shutdown: &triggered::Listener, gateway_cache: &GatewayCache) -> Result {
         tracing::info!("started verifier loader");
 
         let mut report_timer = time::interval(REPORTS_POLL_TIME);
@@ -85,14 +85,14 @@ impl Loader {
             }
             tokio::select! {
                 _ = shutdown.clone() => break,
-                _ = entropy_timer.tick() => match self.handle_tick(&self.entropy_store, shutdown.clone()).await {
+                _ = entropy_timer.tick() => match self.handle_tick(&self.entropy_store, shutdown.clone(), gateway_cache).await {
                     Ok(()) => (),
                     Err(err) => {
                         tracing::error!("fatal entropy loader error: {err:?}");
                         return Err(err)
                     }
                 },
-                _ = report_timer.tick() => match self.handle_tick(&self.ingest_store, shutdown.clone()).await {
+                _ = report_timer.tick() => match self.handle_tick(&self.ingest_store, shutdown.clone(), gateway_cache).await {
                     Ok(()) => (),
                     Err(err) => {
                         tracing::error!("fatal report loader error: {err:?}");
@@ -127,7 +127,7 @@ impl Loader {
         Ok(())
     }
 
-    async fn handle_tick(&self, store: &FileStore, shutdown: triggered::Listener) -> Result {
+    async fn handle_tick(&self, store: &FileStore, shutdown: triggered::Listener, gateway_cache: &GatewayCache) -> Result {
         stream::iter(&[
             FileType::LoraBeaconIngestReport,
             FileType::LoraWitnessIngestReport,
@@ -135,7 +135,7 @@ impl Loader {
         ])
         .map(|file_type| (file_type, shutdown.clone()))
         .for_each_concurrent(5, |(file_type, shutdown)| async move {
-            let _ = self.process_events(*file_type, store, shutdown).await;
+            let _ = self.process_events(*file_type, store, shutdown, gateway_cache).await;
         })
         .await;
         Ok(())
@@ -146,6 +146,7 @@ impl Loader {
         file_type: FileType,
         store: &FileStore,
         shutdown: triggered::Listener,
+        gateway_cache: &GatewayCache
     ) -> Result {
         // TODO: determine a sane value for oldest_event_time
         // events older than this will not be processed
@@ -168,7 +169,7 @@ impl Loader {
             .for_each_concurrent(STORE_WORKERS, |msg| async move {
                 match msg {
                     Err(err) => tracing::warn!("skipping entry in {file_type} stream: {err:?}"),
-                    Ok(buf) => match self.handle_store_update(file_type, &buf).await {
+                    Ok(buf) => match self.handle_store_update(file_type, &buf, gateway_cache).await {
                         Ok(()) => (),
                         Err(err) => {
                             tracing::warn!("failed to update store: {err:?}")
@@ -188,14 +189,14 @@ impl Loader {
         Ok(())
     }
 
-    async fn handle_store_update(&self, file_type: FileType, buf: &[u8]) -> Result {
+    async fn handle_store_update(&self, file_type: FileType, buf: &[u8], gateway_cache: &GatewayCache) -> Result {
         match file_type {
             FileType::LoraBeaconIngestReport => {
                 let beacon: LoraBeaconIngestReport =
                     LoraBeaconIngestReportV1::decode(buf)?.try_into()?;
                 tracing::debug!("beacon report from ingestor: {:?}", &beacon);
                 let packet_data = beacon.report.data.clone();
-                match self.check_valid_gateway(&beacon.report.pub_key).await {
+                match self.check_valid_gateway(&beacon.report.pub_key, gateway_cache).await {
                     true => {
                         Report::insert_into(
                             &self.pool,
@@ -216,7 +217,7 @@ impl Loader {
                     LoraWitnessIngestReportV1::decode(buf)?.try_into()?;
                 tracing::debug!("witness report from ingestor: {:?}", &witness);
                 let packet_data = witness.report.data.clone();
-                match self.check_valid_gateway(&witness.report.pub_key).await {
+                match self.check_valid_gateway(&witness.report.pub_key, gateway_cache).await {
                     true => {
                         Report::insert_into(
                             &self.pool,
@@ -252,20 +253,20 @@ impl Loader {
         }
     }
 
-    async fn check_valid_gateway(&self, pub_key: &PublicKey) -> bool {
+    async fn check_valid_gateway(&self, pub_key: &PublicKey, gateway_cache: &GatewayCache) -> bool {
         if self.check_gw_denied(pub_key).await {
             tracing::debug!("dropping denied gateway : {:?}", &pub_key);
             return false;
         }
-        if self.check_unknown_gw(pub_key).await {
+        if self.check_unknown_gw(pub_key, gateway_cache).await {
             tracing::debug!("dropping unknown gateway: {:?}", &pub_key);
             return false;
         }
         true
     }
 
-    async fn check_unknown_gw(&self, pub_key: &PublicKey) -> bool {
-        self.follower_cache
+    async fn check_unknown_gw(&self, pub_key: &PublicKey, gateway_cache: &GatewayCache) -> bool {
+        gateway_cache
             .resolve_gateway_info(pub_key)
             .await
             .is_err()

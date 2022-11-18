@@ -26,7 +26,6 @@ use helium_proto::{
     },
     Message,
 };
-use node_follower::follower_service::FollowerService;
 use sqlx::PgPool;
 use std::path::Path;
 use tokio::time;
@@ -40,18 +39,18 @@ const LOADER_DB_POOL_SIZE: usize = 2 * LOADER_WORKERS;
 pub struct Runner {
     pool: PgPool,
     settings: Settings,
-    follower_cache: GatewayCache,
+    // follower_cache: GatewayCache,
     density_queries: Option<QuerySender>,
 }
 
 impl Runner {
     pub async fn from_settings(settings: &Settings) -> Result<Self> {
         let pool = settings.database.connect(LOADER_DB_POOL_SIZE).await?;
-        let follower_cache = GatewayCache::from_settings(settings).await?;
+        // let follower_cache = GatewayCache::from_settings(settings).await?;
         Ok(Self {
             pool,
             settings: settings.clone(),
-            follower_cache,
+            // follower_cache,
             density_queries: None,
         })
     }
@@ -60,6 +59,7 @@ impl Runner {
         &mut self,
         density_queries: QuerySender,
         shutdown: &triggered::Listener,
+        gateway_cache: &GatewayCache,
     ) -> Result {
         tracing::info!("starting runner");
 
@@ -128,7 +128,8 @@ impl Runner {
                     match self.handle_db_tick(  shutdown.clone(),
                                                 lora_invalid_beacon_tx.clone(),
                                                 lora_invalid_witness_tx.clone(),
-                                                lora_valid_poc_tx.clone()).await {
+                                                lora_valid_poc_tx.clone(),
+                                                gateway_cache).await {
                     Ok(()) => (),
                     Err(err) => {
                         tracing::error!("fatal db runner error: {err:?}");
@@ -147,6 +148,7 @@ impl Runner {
         lora_invalid_beacon_tx: MessageSender,
         lora_invalid_witness_tx: MessageSender,
         lora_valid_poc_tx: MessageSender,
+        gateway_cache: &GatewayCache
     ) -> Result {
         let db_beacon_reports = Report::get_next_beacons(&self.pool).await?;
         if db_beacon_reports.is_empty() {
@@ -167,7 +169,7 @@ impl Runner {
                 let tx2 = lora_invalid_witness_tx.clone();
                 let tx3 = lora_valid_poc_tx.clone();
                 async move {
-                    match self.handle_beacon_report(db_beacon, tx1, tx2, tx3).await {
+                    match self.handle_beacon_report(db_beacon, tx1, tx2, tx3, gateway_cache).await {
                         Ok(()) => (),
                         Err(err) => {
                             tracing::warn!("failed to handle beacon: {err:?}")
@@ -187,6 +189,7 @@ impl Runner {
         lora_invalid_beacon_tx: MessageSender,
         lora_invalid_witness_tx: MessageSender,
         lora_valid_poc_tx: MessageSender,
+        gateway_cache: &GatewayCache
     ) -> Result {
         let entropy_start_time = match db_beacon.timestamp {
             Some(v) => v,
@@ -229,7 +232,7 @@ impl Runner {
             None => return Err(Error::custom("missing density scaler query sender")),
         };
         // verify POC beacon
-        let beacon_verify_result = poc.verify_beacon(density_queries.clone(), &self.follower_cache).await?;
+        let beacon_verify_result = poc.verify_beacon(density_queries.clone(), gateway_cache).await?;
         match beacon_verify_result.result {
             VerificationStatus::Valid => {
                 tracing::debug!(
@@ -240,7 +243,7 @@ impl Runner {
                 // beacon is valid, verify the POC witnesses
                 if let Some(beacon_info) = beacon_verify_result.gateway_info {
                     let verified_witnesses_result =
-                        poc.verify_witnesses(&beacon_info, density_queries, &self.follower_cache).await?;
+                        poc.verify_witnesses(&beacon_info, density_queries, gateway_cache).await?;
                     // check if there are any failed witnesses
                     // if so update the DB attempts count
                     // and halt here, let things be reprocessed next tick
