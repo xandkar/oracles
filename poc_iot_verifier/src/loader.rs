@@ -28,9 +28,12 @@ use tokio::time;
 const REPORTS_POLL_TIME: time::Duration = time::Duration::from_secs(60 * 5 + 10);
 /// cadence for how often to look for new entropy reports from s3 bucket
 const ENTROPY_POLL_TIME: time::Duration = time::Duration::from_secs(60 * 4 + 10);
-/// max age in seconds of reports loaded from S3 which will be processed
+/// max age in seconds of beacon & witness reports loaded from S3 which will be processed
 /// any report older will be ignored
-const MAX_REPORT_AGE: i64 = 600; // 10 mins
+const REPORT_MAX_REPORT_AGE: i64 = 600; // 10 mins
+/// max age in seconds of entropy reports loaded from S3 which will be processed
+/// any report older will be ignored
+const ENTROPY_MAX_REPORT_AGE: i64 = 60 * 60; // 1 hour
 
 const LOADER_WORKERS: usize = 5;
 const STORE_WORKERS: usize = 100;
@@ -67,7 +70,11 @@ impl Loader {
         })
     }
 
-    pub async fn run(&mut self, shutdown: &triggered::Listener, gateway_cache: &GatewayCache) -> Result {
+    pub async fn run(
+        &mut self,
+        shutdown: &triggered::Listener,
+        gateway_cache: &GatewayCache,
+    ) -> Result {
         tracing::info!("started verifier loader");
 
         let mut report_timer = time::interval(REPORTS_POLL_TIME);
@@ -85,14 +92,14 @@ impl Loader {
             }
             tokio::select! {
                 _ = shutdown.clone() => break,
-                _ = entropy_timer.tick() => match self.handle_tick(&self.entropy_store, shutdown.clone(), gateway_cache).await {
+                _ = entropy_timer.tick() => match self.handle_entropy_tick(&self.entropy_store, shutdown.clone(), gateway_cache).await {
                     Ok(()) => (),
                     Err(err) => {
                         tracing::error!("fatal entropy loader error: {err:?}");
                         return Err(err)
                     }
                 },
-                _ = report_timer.tick() => match self.handle_tick(&self.ingest_store, shutdown.clone(), gateway_cache).await {
+                _ = report_timer.tick() => match self.handle_report_tick(&self.ingest_store, shutdown.clone(), gateway_cache).await {
                     Ok(()) => (),
                     Err(err) => {
                         tracing::error!("fatal report loader error: {err:?}");
@@ -127,7 +134,12 @@ impl Loader {
         Ok(())
     }
 
-    async fn handle_tick(&self, store: &FileStore, shutdown: triggered::Listener, gateway_cache: &GatewayCache) -> Result {
+    async fn handle_report_tick(
+        &self,
+        store: &FileStore,
+        shutdown: triggered::Listener,
+        gateway_cache: &GatewayCache,
+    ) -> Result {
         stream::iter(&[
             FileType::LoraBeaconIngestReport,
             FileType::LoraWitnessIngestReport,
@@ -135,7 +147,42 @@ impl Loader {
         ])
         .map(|file_type| (file_type, shutdown.clone()))
         .for_each_concurrent(5, |(file_type, shutdown)| async move {
-            let _ = self.process_events(*file_type, store, shutdown, gateway_cache).await;
+            let _ = self
+                .process_events(
+                    *file_type,
+                    store,
+                    shutdown,
+                    gateway_cache,
+                    REPORT_MAX_REPORT_AGE,
+                )
+                .await;
+        })
+        .await;
+        Ok(())
+    }
+
+    async fn handle_entropy_tick(
+        &self,
+        store: &FileStore,
+        shutdown: triggered::Listener,
+        gateway_cache: &GatewayCache,
+    ) -> Result {
+        stream::iter(&[
+            FileType::LoraBeaconIngestReport,
+            FileType::LoraWitnessIngestReport,
+            FileType::EntropyReport,
+        ])
+        .map(|file_type| (file_type, shutdown.clone()))
+        .for_each_concurrent(5, |(file_type, shutdown)| async move {
+            let _ = self
+                .process_events(
+                    *file_type,
+                    store,
+                    shutdown,
+                    gateway_cache,
+                    ENTROPY_MAX_REPORT_AGE,
+                )
+                .await;
         })
         .await;
         Ok(())
@@ -146,11 +193,12 @@ impl Loader {
         file_type: FileType,
         store: &FileStore,
         shutdown: triggered::Listener,
-        gateway_cache: &GatewayCache
+        gateway_cache: &GatewayCache,
+        max_age: i64,
     ) -> Result {
         // TODO: determine a sane value for oldest_event_time
         // events older than this will not be processed
-        let oldest_event_time = Utc::now() - ChronoDuration::seconds(MAX_REPORT_AGE);
+        let oldest_event_time = Utc::now() - ChronoDuration::seconds(max_age);
         let last_time = Meta::last_timestamp(&self.pool, file_type)
             .await?
             .unwrap_or(oldest_event_time)
@@ -169,7 +217,10 @@ impl Loader {
             .for_each_concurrent(STORE_WORKERS, |msg| async move {
                 match msg {
                     Err(err) => tracing::warn!("skipping entry in {file_type} stream: {err:?}"),
-                    Ok(buf) => match self.handle_store_update(file_type, &buf, gateway_cache).await {
+                    Ok(buf) => match self
+                        .handle_store_update(file_type, &buf, gateway_cache)
+                        .await
+                    {
                         Ok(()) => (),
                         Err(err) => {
                             tracing::warn!("failed to update store: {err:?}")
@@ -189,14 +240,22 @@ impl Loader {
         Ok(())
     }
 
-    async fn handle_store_update(&self, file_type: FileType, buf: &[u8], gateway_cache: &GatewayCache) -> Result {
+    async fn handle_store_update(
+        &self,
+        file_type: FileType,
+        buf: &[u8],
+        gateway_cache: &GatewayCache,
+    ) -> Result {
         match file_type {
             FileType::LoraBeaconIngestReport => {
                 let beacon: LoraBeaconIngestReport =
                     LoraBeaconIngestReportV1::decode(buf)?.try_into()?;
                 tracing::debug!("beacon report from ingestor: {:?}", &beacon);
                 let packet_data = beacon.report.data.clone();
-                match self.check_valid_gateway(&beacon.report.pub_key, gateway_cache).await {
+                match self
+                    .check_valid_gateway(&beacon.report.pub_key, gateway_cache)
+                    .await
+                {
                     true => {
                         Report::insert_into(
                             &self.pool,
@@ -217,7 +276,10 @@ impl Loader {
                     LoraWitnessIngestReportV1::decode(buf)?.try_into()?;
                 tracing::debug!("witness report from ingestor: {:?}", &witness);
                 let packet_data = witness.report.data.clone();
-                match self.check_valid_gateway(&witness.report.pub_key, gateway_cache).await {
+                match self
+                    .check_valid_gateway(&witness.report.pub_key, gateway_cache)
+                    .await
+                {
                     true => {
                         Report::insert_into(
                             &self.pool,
@@ -266,10 +328,7 @@ impl Loader {
     }
 
     async fn check_unknown_gw(&self, pub_key: &PublicKey, gateway_cache: &GatewayCache) -> bool {
-        gateway_cache
-            .resolve_gateway_info(pub_key)
-            .await
-            .is_err()
+        gateway_cache.resolve_gateway_info(pub_key).await.is_err()
     }
 
     async fn check_gw_denied(&self, pub_key: &PublicKey) -> bool {

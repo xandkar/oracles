@@ -1,7 +1,9 @@
 use clap::Parser;
 use density_scaler::Server as DensityScaler;
 use futures::TryFutureExt;
-use poc_iot_verifier::{loader, purger, runner, Error, Result, Settings, gateway_cache::GatewayCache};
+use poc_iot_verifier::{
+    gateway_cache::GatewayCache, loader, purger, runner, Error, Result, Settings,
+};
 use std::path;
 use tokio::signal;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -41,8 +43,7 @@ impl Cmd {
 }
 
 #[derive(Debug, clap::Args)]
-pub struct Server {
-}
+pub struct Server {}
 
 impl Server {
     pub async fn run(&self, settings: &Settings) -> Result {

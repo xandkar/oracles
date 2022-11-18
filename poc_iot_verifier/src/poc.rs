@@ -1,4 +1,6 @@
-use crate::{entropy::ENTROPY_LIFESPAN, last_beacon::LastBeacon, Error, Result, gateway_cache::GatewayCache,};
+use crate::{
+    entropy::ENTROPY_LIFESPAN, gateway_cache::GatewayCache, last_beacon::LastBeacon, Error, Result,
+};
 use chrono::{DateTime, Duration, Utc};
 use density_scaler::QuerySender;
 use file_store::{
@@ -11,9 +13,7 @@ use helium_proto::{
     services::poc_lora::{InvalidParticipantSide, InvalidReason},
     GatewayStakingMode,
 };
-use node_follower::{
-    gateway_resp::{GatewayInfo},
-};
+use node_follower::gateway_resp::GatewayInfo;
 use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::f64::consts::PI;
@@ -88,10 +88,7 @@ impl Poc {
         let beacon_received_ts = self.beacon_report.received_timestamp;
 
         // pull the beaconer info from our follower
-        let beaconer_info = match gateway_cache
-            .resolve_gateway_info(&beaconer_pub_key)
-            .await
-        {
+        let beaconer_info = match gateway_cache.resolve_gateway_info(&beaconer_pub_key).await {
             Ok(res) => res,
             Err(e) => {
                 tracing::debug!("beacon verification failed, reason: {:?}", e);
@@ -214,7 +211,9 @@ impl Poc {
         let mut failed_witnesses: Vec<LoraInvalidWitnessReport> = Vec::new();
         let witnesses = self.witness_reports.clone();
         for witness_report in witnesses {
-            let witness_result = self.verify_witness(&witness_report, beacon_info, gateway_cache).await?;
+            let witness_result = self
+                .verify_witness(&witness_report, beacon_info, gateway_cache)
+                .await?;
             match witness_result.result {
                 VerificationStatus::Valid => {
                     let gw_info: GatewayInfo = witness_result.gateway_info.ok_or_else(|| {
@@ -273,17 +272,14 @@ impl Poc {
         &mut self,
         witness_report: &LoraWitnessIngestReport,
         beaconer_info: &GatewayInfo,
-        gateway_cache: &GatewayCache
+        gateway_cache: &GatewayCache,
     ) -> Result<VerifyWitnessResult> {
         let witness = &witness_report.report;
         let beacon = &self.beacon_report.report;
         let witness_pub_key = witness.pub_key.clone();
 
         // use pub key to get GW info from our follower and verify the witness
-        let witness_info = match gateway_cache
-            .resolve_gateway_info(&witness_pub_key)
-            .await
-        {
+        let witness_info = match gateway_cache.resolve_gateway_info(&witness_pub_key).await {
             Ok(res) => res,
             Err(_) => {
                 tracing::debug!(

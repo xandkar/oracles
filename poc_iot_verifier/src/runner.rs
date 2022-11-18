@@ -31,7 +31,7 @@ use std::path::Path;
 use tokio::time;
 
 /// the cadence in seconds at which the DB is polled for ready POCs
-const DB_POLL_TIME: time::Duration = time::Duration::from_secs(4 * 60);
+const DB_POLL_TIME: time::Duration = time::Duration::from_secs(3 * 60);
 const BEACON_WORKERS: usize = 40;
 const RUNNER_DB_POOL_SIZE: usize = 2 * BEACON_WORKERS;
 
@@ -147,7 +147,7 @@ impl Runner {
         lora_invalid_beacon_tx: MessageSender,
         lora_invalid_witness_tx: MessageSender,
         lora_valid_poc_tx: MessageSender,
-        gateway_cache: &GatewayCache
+        gateway_cache: &GatewayCache,
     ) -> Result {
         let db_beacon_reports = Report::get_next_beacons(&self.pool).await?;
         if db_beacon_reports.is_empty() {
@@ -168,7 +168,10 @@ impl Runner {
                 let tx2 = lora_invalid_witness_tx.clone();
                 let tx3 = lora_valid_poc_tx.clone();
                 async move {
-                    match self.handle_beacon_report(db_beacon, tx1, tx2, tx3, gateway_cache).await {
+                    match self
+                        .handle_beacon_report(db_beacon, tx1, tx2, tx3, gateway_cache)
+                        .await
+                    {
                         Ok(()) => (),
                         Err(err) => {
                             tracing::warn!("failed to handle beacon: {err:?}")
@@ -188,7 +191,7 @@ impl Runner {
         lora_invalid_beacon_tx: MessageSender,
         lora_invalid_witness_tx: MessageSender,
         lora_valid_poc_tx: MessageSender,
-        gateway_cache: &GatewayCache
+        gateway_cache: &GatewayCache,
     ) -> Result {
         let entropy_start_time = match db_beacon.timestamp {
             Some(v) => v,
@@ -231,7 +234,9 @@ impl Runner {
             None => return Err(Error::custom("missing density scaler query sender")),
         };
         // verify POC beacon
-        let beacon_verify_result = poc.verify_beacon(density_queries.clone(), gateway_cache).await?;
+        let beacon_verify_result = poc
+            .verify_beacon(density_queries.clone(), gateway_cache)
+            .await?;
         match beacon_verify_result.result {
             VerificationStatus::Valid => {
                 tracing::debug!(
@@ -241,8 +246,9 @@ impl Runner {
                 );
                 // beacon is valid, verify the POC witnesses
                 if let Some(beacon_info) = beacon_verify_result.gateway_info {
-                    let verified_witnesses_result =
-                        poc.verify_witnesses(&beacon_info, density_queries, gateway_cache).await?;
+                    let verified_witnesses_result = poc
+                        .verify_witnesses(&beacon_info, density_queries, gateway_cache)
+                        .await?;
                     // check if there are any failed witnesses
                     // if so update the DB attempts count
                     // and halt here, let things be reprocessed next tick
@@ -444,7 +450,6 @@ impl Runner {
                     //     .report
                     //     .report_id(invalid_witness_report.received_timestamp);
                     // _ = Report::delete_report(&self.pool, &report_id).await;
-
                 }
                 Err(err) => {
                     tracing::error!("failed to save invalid_witness_report to s3, {err}");
