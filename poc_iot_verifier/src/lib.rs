@@ -1,6 +1,6 @@
 pub mod entropy;
 pub mod error;
-pub mod follower_cache;
+pub mod gateway_cache;
 pub mod last_beacon;
 pub mod loader;
 pub mod meta;

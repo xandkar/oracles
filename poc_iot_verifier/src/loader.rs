@@ -1,6 +1,6 @@
 use crate::{
     entropy::Entropy,
-    follower_cache::GatewayCache,
+    gateway_cache::GatewayCache,
     meta::Meta,
     poc_report::{Report, ReportType},
     Result, Settings,
