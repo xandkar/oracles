@@ -3,10 +3,7 @@ use async_compression::tokio::write::GzipEncoder;
 use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};
 use futures::SinkExt;
-use std::{
-    io,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 use tokio::{
     fs::{self, File, OpenOptions},
     io::{AsyncWriteExt, BufWriter},
@@ -363,24 +360,20 @@ impl FileSink {
                     let prev_path = active_sink.path.clone();
                     self.deposit_sink(&prev_path).await?;
                     self.active_sink = Some(self.new_sink().await?);
+                } else {
+                    active_sink.transport.send(buf).await?;
+                    active_sink.size += buf_len;
                 }
             }
-            // No sink, make a new one
+            // No sink, make a new one and send the incoming buf.
             None => {
-                self.active_sink = Some(self.new_sink().await?);
+                let mut new_sink = self.new_sink().await?;
+                new_sink.transport.send(buf).await?;
+                new_sink.size += buf_len;
+                self.active_sink = Some(new_sink);
             }
         }
-
-        if let Some(active_sink) = self.active_sink.as_mut() {
-            active_sink.transport.send(buf).await?;
-            active_sink.size += buf_len;
-            Ok(())
-        } else {
-            Err(Error::from(io::Error::new(
-                io::ErrorKind::Other,
-                "sink not available",
-            )))
-        }
+        Ok(())
     }
 }
 
